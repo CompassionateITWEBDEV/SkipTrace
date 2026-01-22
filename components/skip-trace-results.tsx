@@ -4,10 +4,67 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { CheckCircle2, ExternalLink, User, Phone, MapPin, Mail, Building, Globe, AlertTriangle } from "lucide-react"
 
+interface NameData {
+  display?: string
+  full?: string
+  first?: string
+  last?: string
+}
+
+interface PhoneData {
+  number?: string
+  display?: string
+  type?: string
+}
+
+interface AddressData {
+  display?: string
+  street?: string
+  city?: string
+  state?: string
+  zip?: string
+  type?: string
+}
+
+interface EmailData {
+  address?: string
+  email?: string
+}
+
+interface JobData {
+  title?: string
+  position?: string
+  company?: string
+  organization?: string
+}
+
+interface PersonData {
+  names?: (string | NameData)[]
+  phones?: (string | PhoneData)[]
+  addresses?: (string | AddressData)[]
+  emails?: (string | EmailData)[]
+  jobs?: JobData[]
+  education?: unknown[]
+  social_profiles?: unknown[]
+  socialProfiles?: unknown[]
+}
+
+export interface SkipTraceData {
+  person?: PersonData
+  data?: { person?: PersonData }
+  [key: string]: unknown
+}
+
+export interface SocialMediaValue {
+  registered?: boolean
+  username?: string | null
+  url?: string | null
+}
+
 interface SkipTraceResultsProps {
   data: {
-    skipTrace: any
-    socialMedia: any
+    skipTrace: SkipTraceData | null
+    socialMedia: Record<string, boolean | SocialMediaValue> | null
     email: string
     searchedAt: string
   }
@@ -17,19 +74,19 @@ export function SkipTraceResults({ data }: SkipTraceResultsProps) {
   const { skipTrace, socialMedia, email } = data
 
   // Parse skip trace data
-  const person = skipTrace?.person || skipTrace?.data?.person || skipTrace
-  const names = person?.names || []
-  const phones = person?.phones || []
-  const addresses = person?.addresses || []
-  const emails = person?.emails || []
-  const jobs = person?.jobs || []
-  const education = person?.education || []
-  const socialProfiles = person?.social_profiles || person?.socialProfiles || []
+  const person = skipTrace?.person || (skipTrace?.data as { person?: PersonData })?.person || skipTrace
+  const names: (string | NameData)[] = Array.isArray(person?.names) ? person.names : []
+  const phones: (string | PhoneData)[] = Array.isArray(person?.phones) ? person.phones : []
+  const addresses: (string | AddressData)[] = Array.isArray(person?.addresses) ? person.addresses : []
+  const emails: (string | EmailData)[] = Array.isArray(person?.emails) ? person.emails : []
+  const jobs: JobData[] = Array.isArray(person?.jobs) ? person.jobs : []
+  const _education = person?.education || []
+  const _socialProfiles = person?.social_profiles || person?.socialProfiles || []
 
   // Parse social media data
   const platforms = socialMedia || {}
   const foundPlatforms = Object.entries(platforms).filter(
-    ([key, value]) => value === true || (typeof value === "object" && value !== null),
+    ([, value]) => value === true || (typeof value === "object" && value !== null),
   )
 
   const hasResults = names.length > 0 || phones.length > 0 || addresses.length > 0 || foundPlatforms.length > 0
@@ -62,11 +119,14 @@ export function SkipTraceResults({ data }: SkipTraceResultsProps) {
                 Names Found ({names.length})
               </h3>
               <div className="flex flex-wrap gap-2">
-                {names.map((name: any, index: number) => (
-                  <Badge key={index} variant="outline" className="text-sm py-1 px-3">
-                    {typeof name === "string" ? name : name.display || name.full || `${name.first} ${name.last}`}
-                  </Badge>
-                ))}
+                {names.map((name, index: number) => {
+                  const nameStr = typeof name === "string" ? name : (name as NameData).display || (name as NameData).full || `${(name as NameData).first} ${(name as NameData).last}`
+                  return (
+                    <Badge key={index} variant="outline" className="text-sm py-1 px-3">
+                      {nameStr}
+                    </Badge>
+                  )
+                })}
               </div>
             </div>
           )}
@@ -79,21 +139,24 @@ export function SkipTraceResults({ data }: SkipTraceResultsProps) {
                 Phone Numbers ({phones.length})
               </h3>
               <div className="grid gap-2 sm:grid-cols-2">
-                {phones.map((phone: any, index: number) => (
-                  <div key={index} className="flex items-center justify-between rounded-lg border bg-card px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <Phone className="h-4 w-4 text-green-600" />
-                      <span className="font-mono text-sm">
-                        {typeof phone === "string" ? phone : phone.number || phone.display}
-                      </span>
+                {phones.map((phone, index: number) => {
+                  const phoneData = typeof phone === "string" ? { number: phone } : (phone as PhoneData)
+                  return (
+                    <div key={index} className="flex items-center justify-between rounded-lg border bg-card px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <Phone className="h-4 w-4 text-green-600" />
+                        <span className="font-mono text-sm">
+                          {phoneData.number || phoneData.display}
+                        </span>
+                      </div>
+                      {phoneData.type && (
+                        <Badge variant="secondary" className="text-xs">
+                          {phoneData.type}
+                        </Badge>
+                      )}
                     </div>
-                    {phone.type && (
-                      <Badge variant="secondary" className="text-xs">
-                        {phone.type}
-                      </Badge>
-                    )}
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )}
@@ -106,22 +169,21 @@ export function SkipTraceResults({ data }: SkipTraceResultsProps) {
                 Addresses ({addresses.length})
               </h3>
               <div className="grid gap-2">
-                {addresses.map((addr: any, index: number) => (
-                  <div key={index} className="rounded-lg border bg-card px-4 py-3">
-                    <div className="flex items-start gap-2">
-                      <MapPin className="h-4 w-4 text-blue-600 mt-0.5" />
-                      <div>
-                        <p className="text-sm font-medium">
-                          {typeof addr === "string"
-                            ? addr
-                            : addr.display ||
-                              `${addr.street || ""} ${addr.city || ""}, ${addr.state || ""} ${addr.zip || ""}`}
-                        </p>
-                        {addr.type && <p className="text-xs text-muted-foreground">{addr.type}</p>}
+                {addresses.map((addr, index: number) => {
+                  const addrData = typeof addr === "string" ? { display: addr } : (addr as AddressData)
+                  const addrStr = addrData.display || `${addrData.street || ""} ${addrData.city || ""}, ${addrData.state || ""} ${addrData.zip || ""}`
+                  return (
+                    <div key={index} className="rounded-lg border bg-card px-4 py-3">
+                      <div className="flex items-start gap-2">
+                        <MapPin className="h-4 w-4 text-blue-600 mt-0.5" />
+                        <div>
+                          <p className="text-sm font-medium">{addrStr}</p>
+                          {addrData.type && <p className="text-xs text-muted-foreground">{addrData.type}</p>}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )}
@@ -134,11 +196,14 @@ export function SkipTraceResults({ data }: SkipTraceResultsProps) {
                 Email Addresses ({emails.length})
               </h3>
               <div className="flex flex-wrap gap-2">
-                {emails.map((e: any, index: number) => (
-                  <Badge key={index} variant="outline" className="text-sm py-1 px-3 font-mono">
-                    {typeof e === "string" ? e : e.address || e.email}
-                  </Badge>
-                ))}
+                {emails.map((e, index: number) => {
+                  const emailStr = typeof e === "string" ? e : (e as EmailData).address || (e as EmailData).email || ""
+                  return (
+                    <Badge key={index} variant="outline" className="text-sm py-1 px-3 font-mono">
+                      {emailStr}
+                    </Badge>
+                  )
+                })}
               </div>
             </div>
           )}
@@ -151,12 +216,15 @@ export function SkipTraceResults({ data }: SkipTraceResultsProps) {
                 Employment History ({jobs.length})
               </h3>
               <div className="grid gap-2">
-                {jobs.map((job: any, index: number) => (
-                  <div key={index} className="rounded-lg border bg-card px-4 py-3">
-                    <p className="text-sm font-medium">{job.title || job.position || "Position Unknown"}</p>
-                    <p className="text-xs text-muted-foreground">{job.company || job.organization || ""}</p>
-                  </div>
-                ))}
+                {jobs.map((job, index: number) => {
+                  const jobData = job as JobData
+                  return (
+                    <div key={index} className="rounded-lg border bg-card px-4 py-3">
+                      <p className="text-sm font-medium">{jobData.title || jobData.position || "Position Unknown"}</p>
+                      <p className="text-xs text-muted-foreground">{jobData.company || jobData.organization || ""}</p>
+                    </div>
+                  )
+                })}
               </div>
             </div>
           )}
@@ -186,9 +254,9 @@ export function SkipTraceResults({ data }: SkipTraceResultsProps) {
                     <CheckCircle2 className="h-4 w-4 text-green-600" />
                     <span className="font-medium text-sm capitalize">{platform.replace(/_/g, " ")}</span>
                   </div>
-                  {typeof value === "object" && (value as any)?.url && (
+                  {typeof value === "object" && (value as SocialMediaValue)?.url && (
                     <a
-                      href={(value as any).url}
+                      href={(value as SocialMediaValue).url!}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-primary hover:underline"

@@ -61,10 +61,16 @@ export async function POST(request: Request) {
       console.error("Social media check failed:", e)
     }
 
+    interface SocialMediaValue {
+      registered?: boolean
+      username?: string
+      url?: string
+    }
+
     const socialPlatforms = socialData
-      ? Object.entries(socialData)
-          .filter(([key, value]: [string, any]) => value?.registered === true)
-          .map(([key, value]: [string, any]) => ({
+      ? Object.entries(socialData as Record<string, SocialMediaValue>)
+          .filter(([, value]) => value?.registered === true)
+          .map(([key, value]) => ({
             platform: key,
             username: value?.username || null,
             url: value?.url || null,
