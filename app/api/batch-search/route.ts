@@ -213,21 +213,13 @@ export async function POST(request: NextRequest) {
       })
     } else {
       // Create background job for large batches
-      const job = await dbOperation(
-        () =>
-          db.batchJob.create({
-            data: {
-              userId: userId || null,
-              status: "PENDING",
-              inputCount: validInputs.length,
-            },
-          }),
-        null,
-      )
-
-      if (!job) {
-        throw new Error("Failed to create batch job")
-      }
+      const job = await db.batchJob.create({
+        data: {
+          userId: userId || null,
+          status: "PENDING",
+          inputCount: validInputs.length,
+        },
+      })
 
       // Add to queue
       try {
