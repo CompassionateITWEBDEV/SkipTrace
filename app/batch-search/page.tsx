@@ -47,6 +47,8 @@ export default function BatchSearchPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <Textarea
+                id="batch-search-input"
+                name="batchSearchInput"
                 placeholder="john.doe@example.com&#10;+1 555-0123&#10;Jane Smith&#10;..."
                 className="min-h-[300px] font-mono text-sm"
                 value={inputData}

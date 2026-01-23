@@ -302,6 +302,8 @@ export function SearchSection() {
                     </div>
                     <div className="flex flex-col sm:flex-row gap-3">
                       <Input
+                        id="email-search"
+                        name="email"
                         type="email"
                         placeholder="Enter email address..."
                         className="h-12 flex-1"
@@ -352,6 +354,8 @@ export function SearchSection() {
                     </div>
                     <div className="flex flex-col sm:flex-row gap-3">
                       <Input
+                        id="phone-search"
+                        name="phone"
                         type="tel"
                         placeholder="+1 (555) 123-4567 or 5551234567"
                         className="h-12 flex-1 font-mono"
@@ -406,24 +410,32 @@ export function SearchSection() {
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <Input
+                        id="name-first"
+                        name="firstName"
                         placeholder="First Name"
                         className="h-12"
                         value={nameFirst}
                         onChange={(e) => setNameFirst(e.target.value)}
                       />
                       <Input
+                        id="name-last"
+                        name="lastName"
                         placeholder="Last Name"
                         className="h-12"
                         value={nameLast}
                         onChange={(e) => setNameLast(e.target.value)}
                       />
                       <Input
+                        id="name-city"
+                        name="city"
                         placeholder="City (optional)..."
                         className="h-12"
                         value={nameCity}
                         onChange={(e) => setNameCity(e.target.value)}
                       />
                       <Input
+                        id="name-state"
+                        name="state"
                         placeholder="State (optional)..."
                         className="h-12"
                         value={nameState}
@@ -536,6 +548,8 @@ export function SearchSection() {
                     </div>
                     <div className="flex flex-col sm:flex-row gap-3">
                       <Input
+                        id="address-search"
+                        name="address"
                         placeholder="Enter full address (123 Main St, City, State, ZIP)..."
                         className="h-12 flex-1"
                         value={addressQuery}

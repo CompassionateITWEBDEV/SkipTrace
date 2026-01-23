@@ -95,6 +95,8 @@ export default function SavedSearchesPage() {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
+              id="saved-searches-search"
+              name="savedSearchesSearch"
               placeholder="Search saved items..."
               className="pl-10"
             />

@@ -82,6 +82,8 @@ export default function AccountPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         <Input
+                          id={`api-key-${apiKey.id}`}
+                          name={`apiKey-${apiKey.id}`}
                           type={showKey ? "text" : "password"}
                           value={apiKey.key}
                           readOnly
@@ -243,7 +245,13 @@ export default function AccountPage() {
                           <p className="font-medium text-sm">{setting.label}</p>
                           <p className="text-xs text-muted-foreground">{setting.description}</p>
                         </div>
-                        <input type="checkbox" className="h-4 w-4" defaultChecked />
+                        <input
+                          id={`notification-${setting.label.toLowerCase().replace(/\s+/g, "-")}`}
+                          name={`notification-${setting.label.toLowerCase().replace(/\s+/g, "-")}`}
+                          type="checkbox"
+                          className="h-4 w-4"
+                          defaultChecked
+                        />
                       </div>
                     ))}
                   </div>

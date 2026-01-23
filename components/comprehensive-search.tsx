@@ -68,6 +68,7 @@ export function ComprehensiveSearch() {
               <Label htmlFor="email">Email Address</Label>
               <Input
                 id="email"
+                name="email"
                 type="email"
                 placeholder="example@email.com"
                 value={email}
@@ -79,6 +80,7 @@ export function ComprehensiveSearch() {
               <Label htmlFor="phone">Phone Number</Label>
               <Input
                 id="phone"
+                name="phone"
                 type="tel"
                 placeholder="+1 234 567 8900"
                 value={phone}
@@ -90,6 +92,7 @@ export function ComprehensiveSearch() {
               <Label htmlFor="name">Full Name</Label>
               <Input
                 id="name"
+                name="name"
                 type="text"
                 placeholder="John Doe"
                 value={name}
@@ -101,6 +104,7 @@ export function ComprehensiveSearch() {
               <Label htmlFor="address">Address</Label>
               <Input
                 id="address"
+                name="address"
                 type="text"
                 placeholder="123 Main St, City, ST"
                 value={address}
