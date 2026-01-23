@@ -2,7 +2,9 @@ import { NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth"
 import { generateCustomReport } from "@/lib/analytics-engine"
 import { createErrorResponse, ValidationError } from "@/lib/error-handler"
-import type { SearchType } from "@prisma/client"
+
+// SearchType enum values matching Prisma schema
+type SearchType = "EMAIL" | "PHONE" | "NAME" | "ADDRESS" | "COMPREHENSIVE" | "BATCH"
 
 // Force dynamic rendering
 export const dynamic = "force-dynamic"
