@@ -222,7 +222,7 @@ export async function POST(request: NextRequest) {
               inputCount: validInputs.length,
             },
           }),
-        undefined,
+        null,
       )
 
       if (!job) {
