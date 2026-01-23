@@ -63,14 +63,17 @@ export interface EnrichmentResult {
   nameSearchData?: SkipTraceData | null
   confidenceScore: number
   dataPoints: number
+  dataQuality?: "high" | "medium" | "low"
   enrichedAt: string
 }
 
 export interface BatchSearchResult {
   input: string
-  status: string
+  type: "email" | "name" | "phone" | "unknown"
+  status: "pending" | "processing" | "success" | "error" | "not_found"
   matches?: number
-  results?: number
+  results?: unknown
+  error?: string
 }
 
 export interface PersonData {

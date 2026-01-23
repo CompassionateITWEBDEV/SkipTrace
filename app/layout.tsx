@@ -3,6 +3,8 @@ import type { Metadata, Viewport } from "next"
 import { Analytics } from "@vercel/analytics/next"
 import { Navigation } from "@/components/navigation"
 import { Footer } from "@/components/footer"
+import { Providers } from "@/components/providers"
+import { ErrorBoundary } from "@/components/error-boundary"
 import "./globals.css"
 
 export const metadata: Metadata = {
@@ -41,12 +43,17 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className="bg-background">
+    <html lang="en" className="bg-background" suppressHydrationWarning>
       <body className={`font-sans antialiased flex flex-col min-h-screen`}>
-        <Navigation />
-        <div className="flex-1">{children}</div>
-        <Footer />
-        <Analytics />
+        <Providers>
+          <ErrorBoundary>
+            <Navigation />
+            <div className="flex-1">{children}</div>
+            <Footer />
+            {/* Only load Vercel Analytics in production/Vercel environment */}
+            {process.env.VERCEL && <Analytics />}
+          </ErrorBoundary>
+        </Providers>
       </body>
     </html>
   )

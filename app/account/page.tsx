@@ -1,20 +1,110 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { Key, Copy, Eye, EyeOff, Plus, Trash2, User, CreditCard, Settings } from "lucide-react"
+import { Key, Copy, Eye, EyeOff, Plus, Trash2, User, CreditCard, Settings, Loader2 } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useSession } from "next-auth/react"
+
+interface ApiKey {
+  id: string
+  name: string
+  key: string
+  createdAt: string
+  lastUsed: string | null
+}
+
+interface UsageStats {
+  monthly: { used: number; limit: number; remaining: number }
+  daily: { used: number; limit: number; remaining: number }
+}
 
 export default function AccountPage() {
-  const [showKey, setShowKey] = useState(false)
-  const [apiKeys] = useState([
-    { id: "1", name: "Production Key", key: "sk_live_xxxxxxxxxxxx", created: "2024-01-15", usage: 2847 },
-    { id: "2", name: "Development Key", key: "sk_test_xxxxxxxxxxxx", created: "2024-01-10", usage: 432 },
-  ])
+  const { data: session } = useSession()
+  const [showKey, setShowKey] = useState<Record<string, boolean>>({})
+  const [apiKeys, setApiKeys] = useState<ApiKey[]>([])
+  const [_usage, setUsage] = useState<UsageStats | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [creatingKey, setCreatingKey] = useState(false)
+  const [newKeyName, setNewKeyName] = useState("")
+  const [showCreateForm, setShowCreateForm] = useState(false)
+
+  useEffect(() => {
+    fetchApiKeys()
+    fetchUsage()
+  }, [])
+
+  const fetchApiKeys = async () => {
+    try {
+      const response = await fetch("/api/api-keys")
+      if (response.ok) {
+        const data = await response.json()
+        setApiKeys(data.apiKeys || [])
+      }
+    } catch (error) {
+      console.error("Error fetching API keys:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const fetchUsage = async () => {
+    try {
+      const response = await fetch("/api/account/usage")
+      if (response.ok) {
+        const data = await response.json()
+        setUsage(data)
+      }
+    } catch (error) {
+      console.error("Error fetching usage:", error)
+    }
+  }
+
+  const createApiKey = async () => {
+    if (!newKeyName.trim()) return
+
+    setCreatingKey(true)
+    try {
+      const response = await fetch("/api/api-keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newKeyName }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setApiKeys([data.apiKey, ...apiKeys])
+        setNewKeyName("")
+        setShowCreateForm(false)
+        // Show the new key
+        setShowKey({ [data.apiKey.id]: true })
+      }
+    } catch (error) {
+      console.error("Error creating API key:", error)
+    } finally {
+      setCreatingKey(false)
+    }
+  }
+
+  const deleteApiKey = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this API key?")) return
+
+    try {
+      const response = await fetch(`/api/api-keys?id=${id}`, {
+        method: "DELETE",
+      })
+
+      if (response.ok) {
+        setApiKeys(apiKeys.filter((key) => key.id !== id))
+      }
+    } catch (error) {
+      console.error("Error deleting API key:", error)
+    }
+  }
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
@@ -58,59 +148,110 @@ export default function AccountPage() {
                     <CardTitle>API Keys</CardTitle>
                     <CardDescription>Manage your API keys for accessing MASE Intelligence services</CardDescription>
                   </div>
-                  <Button className="gap-2">
+                  <Button className="gap-2" onClick={() => setShowCreateForm(!showCreateForm)}>
                     <Plus className="h-4 w-4" />
                     Create New Key
                   </Button>
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  {apiKeys.map((apiKey) => (
-                    <div key={apiKey.id} className="border border-border rounded-lg p-4">
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <h4 className="font-semibold mb-1">{apiKey.name}</h4>
-                          <p className="text-xs text-muted-foreground">Created {apiKey.created}</p>
-                        </div>
-                        <div className="flex gap-2">
-                          <Badge>{apiKey.usage.toLocaleString()} calls</Badge>
-                          <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Input
-                          id={`api-key-${apiKey.id}`}
-                          name={`apiKey-${apiKey.id}`}
-                          type={showKey ? "text" : "password"}
-                          autoComplete="off"
-                          value={apiKey.key}
-                          readOnly
-                          className="font-mono text-sm"
-                        />
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setShowKey(!showKey)}
-                          className="gap-2 bg-transparent"
-                        >
-                          {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => copyToClipboard(apiKey.key)}
-                          className="gap-2 bg-transparent"
-                        >
-                          <Copy className="h-4 w-4" />
-                          Copy
-                        </Button>
-                      </div>
+                {showCreateForm && (
+                  <div className="mb-4 p-4 border border-border rounded-lg space-y-3">
+                    <div>
+                      <Label htmlFor="key-name">API Key Name</Label>
+                      <Input
+                        id="key-name"
+                        value={newKeyName}
+                        onChange={(e) => setNewKeyName(e.target.value)}
+                        placeholder="e.g., Production Key"
+                        className="mt-1"
+                      />
                     </div>
-                  ))}
-                </div>
+                    <div className="flex gap-2">
+                      <Button onClick={createApiKey} disabled={creatingKey || !newKeyName.trim()}>
+                        {creatingKey ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Creating...
+                          </>
+                        ) : (
+                          "Create Key"
+                        )}
+                      </Button>
+                      <Button variant="outline" onClick={() => setShowCreateForm(false)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {loading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {apiKeys.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-8">
+                        No API keys yet. Create one to get started.
+                      </p>
+                    ) : (
+                      apiKeys.map((apiKey) => (
+                        <div key={apiKey.id} className="border border-border rounded-lg p-4">
+                          <div className="flex items-start justify-between mb-3">
+                            <div>
+                              <h4 className="font-semibold mb-1">{apiKey.name}</h4>
+                              <p className="text-xs text-muted-foreground">Created {new Date(apiKey.createdAt).toLocaleDateString()}</p>
+                            </div>
+                            <div className="flex gap-2">
+                              {apiKey.lastUsed && (
+                                <Badge variant="secondary">
+                                  Last used: {new Date(apiKey.lastUsed).toLocaleDateString()}
+                                </Badge>
+                              )}
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 w-8 p-0"
+                                onClick={() => deleteApiKey(apiKey.id)}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              id={`api-key-${apiKey.id}`}
+                              name={`apiKey-${apiKey.id}`}
+                              type={showKey[apiKey.id] ? "text" : "password"}
+                              autoComplete="off"
+                              value={apiKey.key}
+                              readOnly
+                              className="font-mono text-sm"
+                            />
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setShowKey({ ...showKey, [apiKey.id]: !showKey[apiKey.id] })}
+                              className="gap-2 bg-transparent"
+                            >
+                              {showKey[apiKey.id] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => copyToClipboard(apiKey.key)}
+                              className="gap-2 bg-transparent"
+                            >
+                              <Copy className="h-4 w-4" />
+                              Copy
+                            </Button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -175,7 +316,15 @@ export default function AccountPage() {
                 </div>
                 <div>
                   <Label htmlFor="email">Email</Label>
-                  <Input id="email" name="email" type="email" autoComplete="email" defaultValue="john.doe@example.com" />
+                  <Input
+                    id="email"
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    defaultValue={session?.user?.email || ""}
+                    disabled
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Email cannot be changed</p>
                 </div>
                 <div>
                   <Label htmlFor="company">Company</Label>

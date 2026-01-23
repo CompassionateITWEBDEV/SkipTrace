@@ -2,74 +2,179 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { BarChart3, TrendingUp, Users, Search, Activity, Clock } from "lucide-react"
-import { Suspense } from "react"
+import { Button } from "@/components/ui/button"
+import { BarChart3, TrendingUp, Users, Search, Activity, Clock, Download } from "lucide-react"
+import { Suspense, useEffect, useState } from "react"
 import Loading from "./loading"
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts"
+import { exportToJSON, exportToCSV } from "@/lib/export-utils"
+
+interface AnalyticsData {
+  totalSearches: number
+  successfulSearches: number
+  successRate: number
+  activeUsers: number
+  avgResponseTime: number
+  avgDataPoints?: number
+  searchesByType: Record<string, number>
+  typePercentages: Record<string, number>
+  dailyVolumes: Array<{ date: string; count: number }>
+  peakHours?: Array<{ hour: number; count: number }>
+  successRateTrends?: Array<{ date: string; successRate: number; total: number }>
+  userActivityTrends?: Array<{ date: string; count: number }>
+}
 
 export default function AnalyticsPage() {
+  const [data, setData] = useState<AnalyticsData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function fetchAnalytics() {
+      try {
+        const response = await fetch("/api/analytics/stats?days=30")
+        if (response.ok) {
+          const analyticsData = await response.json()
+          setData(analyticsData)
+        } else {
+          const errorData = await response.json().catch(() => ({}))
+          setError(errorData.error || "Failed to load analytics data")
+        }
+      } catch (err) {
+        setError("Error loading analytics. Please try again later.")
+        console.error(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchAnalytics()
+  }, [])
   return (
     <main className="min-h-screen bg-background">
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold">Analytics Dashboard</h1>
-          <p className="text-muted-foreground mt-2">
-            Track your search performance, usage statistics, and investigation insights
-          </p>
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">Analytics Dashboard</h1>
+            <p className="text-muted-foreground mt-2">
+              Track your search performance, usage statistics, and investigation insights
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (data) {
+                  exportToJSON(data, `analytics-report-${new Date().toISOString().split("T")[0]}`)
+                }
+              }}
+              disabled={!data || loading}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Export JSON
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (data) {
+                  // Convert analytics data to CSV format
+                  const csvData = [
+                    { Metric: "Total Searches", Value: data.totalSearches },
+                    { Metric: "Successful Searches", Value: data.successfulSearches },
+                    { Metric: "Success Rate (%)", Value: data.successRate },
+                    { Metric: "Active Users", Value: data.activeUsers },
+                    { Metric: "Avg Response Time (ms)", Value: data.avgResponseTime },
+                    ...(data.avgDataPoints ? [{ Metric: "Avg Data Points", Value: data.avgDataPoints }] : []),
+                    ...Object.entries(data.searchesByType).map(([type, count]) => ({
+                      Metric: `Searches - ${type}`,
+                      Value: count,
+                    })),
+                  ]
+                  exportToCSV(csvData, `analytics-report-${new Date().toISOString().split("T")[0]}`)
+                }
+              }}
+              disabled={!data || loading}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Export CSV
+            </Button>
+          </div>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
+        {loading ? (
+          <div className="flex items-center justify-center h-64">
+            <Loading />
+          </div>
+        ) : error ? (
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Total Searches</CardTitle>
-              <Search className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">2,847</div>
-              <p className="text-xs text-muted-foreground">
-                <span className="text-green-600">+12.3%</span> from last month
-              </p>
+            <CardContent className="pt-6">
+              <p className="text-destructive">{error}</p>
             </CardContent>
           </Card>
+        ) : (
+          <>
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 mb-8">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium">Total Searches</CardTitle>
+                  <Search className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{data?.totalSearches.toLocaleString() || 0}</div>
+                  <p className="text-xs text-muted-foreground">Last 30 days</p>
+                </CardContent>
+              </Card>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Successful Matches</CardTitle>
-              <TrendingUp className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">94.2%</div>
-              <p className="text-xs text-muted-foreground">
-                <span className="text-green-600">+2.1%</span> success rate
-              </p>
-            </CardContent>
-          </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium">Successful Matches</CardTitle>
+                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{data?.successRate.toFixed(1) || 0}%</div>
+                  <p className="text-xs text-muted-foreground">
+                    {data?.successfulSearches || 0} successful searches
+                  </p>
+                </CardContent>
+              </Card>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Active Users</CardTitle>
-              <Users className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">342</div>
-              <p className="text-xs text-muted-foreground">
-                <span className="text-green-600">+8</span> new this week
-              </p>
-            </CardContent>
-          </Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium">Active Users</CardTitle>
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{data?.activeUsers || 0}</div>
+                  <p className="text-xs text-muted-foreground">Last 30 days</p>
+                </CardContent>
+              </Card>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Avg Response Time</CardTitle>
-              <Clock className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">1.2s</div>
-              <p className="text-xs text-muted-foreground">
-                <span className="text-green-600">-0.3s</span> faster
-              </p>
-            </CardContent>
-          </Card>
-        </div>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium">Avg Response Time</CardTitle>
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {data?.avgResponseTime ? `${(data.avgResponseTime / 1000).toFixed(1)}s` : "N/A"}
+                  </div>
+                  <p className="text-xs text-muted-foreground">Average API response time</p>
+                </CardContent>
+              </Card>
+
+              {data?.avgDataPoints !== undefined && (
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium">Avg Data Points</CardTitle>
+                    <Activity className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{data.avgDataPoints}</div>
+                    <p className="text-xs text-muted-foreground">Per successful search</p>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
 
         <Suspense fallback={<Loading />}>
           <Tabs defaultValue="overview" className="space-y-6">
@@ -87,13 +192,25 @@ export default function AnalyticsPage() {
                   <CardDescription>Daily search activity over the last 30 days</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="h-[300px] flex items-center justify-center border border-dashed border-border rounded-lg">
-                    <div className="text-center text-muted-foreground">
-                      <BarChart3 className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                      <p>Chart visualization placeholder</p>
-                      <p className="text-sm">Integrate with Recharts or Chart.js</p>
+                  {data?.dailyVolumes && data.dailyVolumes.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <LineChart data={data.dailyVolumes.reverse()}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="date" />
+                        <YAxis />
+                        <Tooltip />
+                        <Legend />
+                        <Line type="monotone" dataKey="count" stroke="#8884d8" name="Searches" />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="h-[300px] flex items-center justify-center border border-dashed border-border rounded-lg">
+                      <div className="text-center text-muted-foreground">
+                        <BarChart3 className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                        <p>No data available</p>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -104,42 +221,26 @@ export default function AnalyticsPage() {
                     <CardDescription>Breakdown by search method</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium">Email Search</span>
-                        <span className="text-sm text-muted-foreground">42%</span>
-                      </div>
-                      <div className="h-2 bg-muted rounded-full overflow-hidden">
-                        <div className="h-full bg-primary" style={{ width: "42%" }} />
-                      </div>
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium">Phone Search</span>
-                        <span className="text-sm text-muted-foreground">31%</span>
-                      </div>
-                      <div className="h-2 bg-muted rounded-full overflow-hidden">
-                        <div className="h-full bg-chart-2" style={{ width: "31%" }} />
-                      </div>
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium">Name Search</span>
-                        <span className="text-sm text-muted-foreground">18%</span>
-                      </div>
-                      <div className="h-2 bg-muted rounded-full overflow-hidden">
-                        <div className="h-full bg-chart-3" style={{ width: "18%" }} />
-                      </div>
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium">Address Search</span>
-                        <span className="text-sm text-muted-foreground">9%</span>
-                      </div>
-                      <div className="h-2 bg-muted rounded-full overflow-hidden">
-                        <div className="h-full bg-chart-4" style={{ width: "9%" }} />
-                      </div>
-                    </div>
+                    {data?.typePercentages ? (
+                      Object.entries(data.typePercentages)
+                        .sort(([, a], [, b]) => b - a)
+                        .map(([type, percentage]) => (
+                          <div key={type}>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm font-medium capitalize">{type.replace("_", " ")}</span>
+                              <span className="text-sm text-muted-foreground">{percentage}%</span>
+                            </div>
+                            <div className="h-2 bg-muted rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-primary"
+                                style={{ width: `${percentage}%` }}
+                              />
+                            </div>
+                          </div>
+                        ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No search type data available</p>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -239,38 +340,126 @@ export default function AnalyticsPage() {
             </TabsContent>
 
             <TabsContent value="performance">
-              <Card>
-                <CardHeader>
-                  <CardTitle>System Performance Metrics</CardTitle>
-                  <CardDescription>API response times and success rates</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-6">
-                    <div>
-                      <h4 className="font-medium mb-4">API Endpoint Performance</h4>
+              <div className="grid gap-6 md:grid-cols-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Success Rate Trends</CardTitle>
+                    <CardDescription>Daily success rate over time</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {data?.successRateTrends && data.successRateTrends.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={300}>
+                        <LineChart data={data.successRateTrends.reverse()}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="date" />
+                          <YAxis domain={[0, 100]} />
+                          <Tooltip />
+                          <Legend />
+                          <Line type="monotone" dataKey="successRate" stroke="#10b981" name="Success Rate %" />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="h-[300px] flex items-center justify-center border border-dashed border-border rounded-lg">
+                        <div className="text-center text-muted-foreground">
+                          <BarChart3 className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                          <p>No data available</p>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Peak Usage Hours</CardTitle>
+                    <CardDescription>Most active hours of the day</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {data?.peakHours && data.peakHours.length > 0 ? (
                       <div className="space-y-3">
-                        {[
-                          { endpoint: "Email Social Check", avgTime: "0.8s", success: "98.2%" },
-                          { endpoint: "Skip Trace Search", avgTime: "1.2s", success: "96.5%" },
-                          { endpoint: "Phone Validation", avgTime: "0.6s", success: "99.1%" },
-                          { endpoint: "Virtual Number Check", avgTime: "0.9s", success: "97.8%" },
-                        ].map((api) => (
-                          <div key={api.endpoint} className="flex items-center justify-between border-b border-border pb-3">
-                            <span className="text-sm font-medium">{api.endpoint}</span>
-                            <div className="flex gap-4 text-sm">
-                              <span className="text-muted-foreground">Avg: {api.avgTime}</span>
-                              <span className="text-green-600">{api.success}</span>
+                        {data.peakHours.map((peak: { hour: number; count: number }) => (
+                          <div key={peak.hour} className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium">
+                                {peak.hour === 0 ? "12 AM" : peak.hour < 12 ? `${peak.hour} AM` : peak.hour === 12 ? "12 PM" : `${peak.hour - 12} PM`}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 flex-1 mx-4">
+                              <div className="h-2 bg-muted rounded-full flex-1 overflow-hidden">
+                                <div
+                                  className="h-full bg-primary"
+                                  style={{ width: `${(peak.count / ((data.peakHours && data.peakHours[0]?.count) || 1)) * 100}%` }}
+                                />
+                              </div>
+                              <span className="text-sm text-muted-foreground w-12 text-right">{peak.count}</span>
                             </div>
                           </div>
                         ))}
                       </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No peak hour data available</p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>User Activity Trends</CardTitle>
+                    <CardDescription>Daily active users</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {data?.userActivityTrends && data.userActivityTrends.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={300}>
+                        <LineChart data={data.userActivityTrends.reverse()}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="date" />
+                          <YAxis />
+                          <Tooltip />
+                          <Legend />
+                          <Line type="monotone" dataKey="count" stroke="#3b82f6" name="Active Users" />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="h-[300px] flex items-center justify-center border border-dashed border-border rounded-lg">
+                        <div className="text-center text-muted-foreground">
+                          <Users className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                          <p>No data available</p>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>System Performance Metrics</CardTitle>
+                    <CardDescription>API response times and success rates</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {[
+                        { endpoint: "Email Social Check", avgTime: "0.8s", success: "98.2%" },
+                        { endpoint: "Skip Trace Search", avgTime: "1.2s", success: "96.5%" },
+                        { endpoint: "Phone Validation", avgTime: "0.6s", success: "99.1%" },
+                        { endpoint: "Virtual Number Check", avgTime: "0.9s", success: "97.8%" },
+                      ].map((api) => (
+                        <div key={api.endpoint} className="flex items-center justify-between border-b border-border pb-3">
+                          <span className="text-sm font-medium">{api.endpoint}</span>
+                          <div className="flex gap-4 text-sm">
+                            <span className="text-muted-foreground">Avg: {api.avgTime}</span>
+                            <span className="text-green-600">{api.success}</span>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              </div>
             </TabsContent>
           </Tabs>
         </Suspense>
+          </>
+        )}
       </div>
     </main>
   )

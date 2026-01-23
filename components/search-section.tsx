@@ -8,9 +8,11 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Search, Mail, Phone, User, MapPin, Loader2, AlertTriangle, Eye } from "lucide-react"
+import { Search, Mail, Phone, User, MapPin, Loader2, AlertTriangle, Eye, Bell, CheckCircle2, ExternalLink } from "lucide-react"
 import { PhoneValidationResult } from "./phone-validation-result"
 import { SkipTraceResults } from "./skip-trace-results"
+import { AddressSearchResults } from "./address-search-results"
+import { NameSearchResults } from "./name-search-results"
 import type { SkipTraceData, SocialMediaData } from "@/lib/types"
 
 interface PhoneValidationData {
@@ -31,8 +33,11 @@ export function SearchSection() {
   const [phoneQuery, setPhoneQuery] = useState("")
   const [nameFirst, setNameFirst] = useState("")
   const [nameLast, setNameLast] = useState("")
+  const [nameMiddle, setNameMiddle] = useState("")
   const [nameCity, setNameCity] = useState("")
   const [nameState, setNameState] = useState("")
+  const [nameAge, setNameAge] = useState("")
+  const [nameDOB, setNameDOB] = useState("")
   const [addressQuery, setAddressQuery] = useState("")
   const [isSearching, setIsSearching] = useState(false)
 
@@ -40,10 +45,19 @@ export function SearchSection() {
   const [phoneSearchResults, setPhoneSearchResults] = useState<{ skipTraceData?: unknown; searchPerformed?: string } | null>(null)
   const [phoneValidationResult, setPhoneValidationResult] = useState<PhoneValidationData | null>(null)
   const [monitoringData, setMonitoringData] = useState<{ services?: Array<{ name?: string; description?: string; contact?: string }> } | null>(null)
-  const [nameSearchResults, setNameSearchResults] = useState<{ skipTraceData?: unknown; socialData?: { platforms?: Array<{ platform?: string; url?: string; username?: string }> }; possibleEmails?: string[]; searchPerformed?: string } | null>(null)
-  const [addressSearchResults, setAddressSearchResults] = useState<{ query?: { fullAddress?: string }; propertyInfo?: { type?: string; county?: string }; instructions?: string } | null>(null)
+  const [nameSearchResults, setNameSearchResults] = useState<{ skipTraceData?: unknown; multipleResults?: Array<{ person: unknown; confidence?: number; age?: number; location?: string }>; socialData?: { platforms?: Array<{ platform?: string; url?: string; username?: string }> }; possibleEmails?: string[]; searchPerformed?: string } | null>(null)
+  const [addressSearchResults, setAddressSearchResults] = useState<{
+    query?: { street?: string; city?: string; state?: string; zip?: string; fullAddress?: string }
+    propertyInfo?: { address?: string; type?: string; county?: string; estimatedValue?: string | number; owner?: string; lastSaleDate?: string }
+    instructions?: string
+    residents?: Array<{ name?: string; phone?: string; email?: string; age?: number | string }>
+    skipTraceData?: unknown
+    searchPerformed?: string
+  } | null>(null)
   const [errorMessage, setErrorMessage] = useState<string>("")
   const [consentChecked, setConsentChecked] = useState(false)
+  const [creatingSubscription, setCreatingSubscription] = useState(false)
+  const [subscriptionSuccess, setSubscriptionSuccess] = useState<string | null>(null)
 
   const handleEmailSearch = async () => {
     if (!emailQuery) return
@@ -61,14 +75,42 @@ export function SearchSection() {
 
       if (response.ok) {
         const data = await response.json()
-        setSkipTraceResults(data)
+        // Check if we actually got results
+        if (!data.skipTrace && !data.socialMedia) {
+          setErrorMessage("INFO: No records found for this email address. Try searching by name or phone number instead.")
+        } else {
+          setSkipTraceResults(data)
+          // Optionally save as report
+          try {
+            await fetch("/api/reports", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                title: `Email Search: ${emailQuery}`,
+                query: JSON.stringify({ email: emailQuery }),
+                results: data,
+                searchType: "EMAIL",
+              }),
+            })
+          } catch (err) {
+            // Silently fail - report saving is optional
+            console.error("Failed to save report:", err)
+          }
+        }
       } else {
         const errorData = await response.json()
-        setErrorMessage(errorData.error || "Failed to perform skip trace")
+        // Differentiate between "not found" (404) and actual errors
+        if (response.status === 404 || errorData.error?.toLowerCase().includes("not found")) {
+          setErrorMessage("INFO: No records found for this email address. Try searching by name or phone number instead.")
+        } else if (response.status === 429) {
+          setErrorMessage("ERROR: Rate limit exceeded. Please try again later or upgrade your plan for higher limits.")
+        } else {
+          setErrorMessage(`ERROR: ${errorData.error || "Failed to perform skip trace. Please try again."}`)
+        }
       }
     } catch (error) {
       console.error("Skip trace failed:", error)
-      setErrorMessage("An error occurred while searching")
+      setErrorMessage("Network error occurred. Please check your connection and try again.")
     } finally {
       setIsSearching(false)
     }
@@ -131,11 +173,18 @@ export function SearchSection() {
         }
       } else {
         const errorData = await response.json()
-        setErrorMessage(errorData.error || "Failed to search phone")
+        // Differentiate between "not found" and actual errors
+        if (response.status === 404 || errorData.error?.toLowerCase().includes("not found")) {
+          setErrorMessage("INFO: No records found for this phone number. Try searching by email or name instead.")
+        } else if (response.status === 429) {
+          setErrorMessage("ERROR: Rate limit exceeded. Please try again later or upgrade your plan for higher limits.")
+        } else {
+          setErrorMessage(`ERROR: ${errorData.error || "Failed to search phone. Please try again."}`)
+        }
       }
     } catch (error) {
       console.error("Phone search failed:", error)
-      setErrorMessage("An error occurred while searching")
+      setErrorMessage("Network error occurred. Please check your connection and try again.")
     } finally {
       setIsSearching(false)
     }
@@ -155,8 +204,11 @@ export function SearchSection() {
         body: JSON.stringify({
           firstName: nameFirst,
           lastName: nameLast,
-          city: nameCity,
-          state: nameState,
+          middleName: nameMiddle || undefined,
+          city: nameCity || undefined,
+          state: nameState || undefined,
+          age: nameAge ? parseInt(nameAge) : undefined,
+          dateOfBirth: nameDOB || undefined,
         }),
       })
 
@@ -165,11 +217,18 @@ export function SearchSection() {
         setNameSearchResults(data)
       } else {
         const errorData = await response.json()
-        setErrorMessage(errorData.error || "Failed to search by name")
+        // Differentiate between "not found" and actual errors
+        if (response.status === 404 || errorData.error?.toLowerCase().includes("not found")) {
+          setErrorMessage("INFO: No records found for this name. Try adding city/state filters or search by email/phone instead.")
+        } else if (response.status === 429) {
+          setErrorMessage("ERROR: Rate limit exceeded. Please try again later or upgrade your plan for higher limits.")
+        } else {
+          setErrorMessage(`ERROR: ${errorData.error || "Failed to search by name. Please try again."}`)
+        }
       }
     } catch (error) {
       console.error("Name search failed:", error)
-      setErrorMessage("An error occurred while searching")
+      setErrorMessage("Network error occurred. Please check your connection and try again.")
     } finally {
       setIsSearching(false)
     }
@@ -197,14 +256,26 @@ export function SearchSection() {
 
       if (response.ok) {
         const data = await response.json()
-        setAddressSearchResults(data)
+        // Check if we got any results
+        if (!data.skipTraceData && !data.residents) {
+          setErrorMessage("INFO: No records found for this address. Try searching by name or email instead.")
+        } else {
+          setAddressSearchResults(data)
+        }
       } else {
         const errorData = await response.json()
-        setErrorMessage(errorData.error || "Failed to search address")
+        // Differentiate between "not found" and actual errors
+        if (response.status === 404 || errorData.error?.toLowerCase().includes("not found")) {
+          setErrorMessage("INFO: No records found for this address. Try searching by name or email instead.")
+        } else if (response.status === 429) {
+          setErrorMessage("ERROR: Rate limit exceeded. Please try again later or upgrade your plan for higher limits.")
+        } else {
+          setErrorMessage(`ERROR: ${errorData.error || "Failed to search address. Please try again."}`)
+        }
       }
     } catch (error) {
       console.error("Address search failed:", error)
-      setErrorMessage("An error occurred while searching")
+      setErrorMessage("Network error occurred. Please check your connection and try again.")
     } finally {
       setIsSearching(false)
     }
@@ -228,17 +299,76 @@ export function SearchSection() {
       })
 
       if (response.ok) {
-        const data = await response.json()
-        setMonitoringData(data)
+        const contentType = response.headers.get("content-type")
+        if (contentType && contentType.includes("application/json")) {
+          const data = await response.json()
+          setMonitoringData(data)
+        } else {
+          // Handle non-JSON response
+          const text = await response.text()
+          console.error("Unexpected response format:", text)
+          setErrorMessage("Invalid response from monitoring service")
+        }
       } else {
-        const errorData = await response.json()
-        setErrorMessage(errorData.error || "Failed to access monitoring service")
+        // Handle error response
+        const contentType = response.headers.get("content-type")
+        if (contentType && contentType.includes("application/json")) {
+          const errorData = await response.json()
+          setErrorMessage(errorData.error || "Failed to access monitoring service")
+        } else {
+          // Handle non-JSON error response
+          const statusText = response.statusText || `Error ${response.status}`
+          setErrorMessage(statusText || "Failed to access monitoring service")
+        }
       }
     } catch (error) {
       console.error("Monitoring request failed:", error)
-      setErrorMessage("An error occurred")
+      setErrorMessage(error instanceof Error ? error.message : "An error occurred")
     } finally {
       setIsSearching(false)
+    }
+  }
+
+  const handleCreateSubscription = async (targetType: "email" | "phone" | "name", targetValue: string, frequency = "weekly") => {
+    if (!consentChecked) {
+      setErrorMessage("You must confirm legal authorization to create monitoring subscriptions")
+      return
+    }
+
+    setCreatingSubscription(true)
+    setSubscriptionSuccess(null)
+    setErrorMessage("")
+
+    try {
+      const response = await fetch("/api/relationship-monitor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          consent: true,
+          targetType,
+          targetValue,
+          frequency,
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.subscription) {
+          setSubscriptionSuccess(`Monitoring subscription created for ${targetType}: ${targetValue}`)
+          // Clear success message after 5 seconds
+          setTimeout(() => setSubscriptionSuccess(null), 5000)
+        } else {
+          setErrorMessage("Failed to create subscription. Please try again or visit the monitoring dashboard.")
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        setErrorMessage(errorData.error || "Failed to create monitoring subscription")
+      }
+    } catch (error) {
+      console.error("Subscription creation failed:", error)
+      setErrorMessage(error instanceof Error ? error.message : "An error occurred while creating subscription")
+    } finally {
+      setCreatingSubscription(false)
     }
   }
 
@@ -259,9 +389,16 @@ export function SearchSection() {
         <Card className="border-2 shadow-lg">
           <CardContent className="p-6">
             {errorMessage && (
-              <Alert variant="destructive" className="mb-4">
+              <Alert variant={errorMessage.startsWith("ERROR:") ? "destructive" : errorMessage.startsWith("INFO:") ? "default" : "destructive"} className="mb-4">
                 <AlertTriangle className="h-4 w-4" />
-                <AlertDescription>{errorMessage}</AlertDescription>
+                <AlertDescription>
+                  {errorMessage.replace(/^(ERROR|INFO):\s*/, "")}
+                  {errorMessage.startsWith("INFO:") && (
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      💡 Tip: Try different search methods or check your input for typos.
+                    </div>
+                  )}
+                </AlertDescription>
               </Alert>
             )}
 
@@ -333,14 +470,68 @@ export function SearchSection() {
                     </div>
                   </div>
                   {skipTraceResults && (
-                    <SkipTraceResults
-                      data={{
-                        skipTrace: (skipTraceResults.skipTrace as SkipTraceData | null) || null,
-                        socialMedia: (skipTraceResults.socialMedia as SocialMediaData) || {},
-                        email: emailQuery,
-                        searchedAt: skipTraceResults.searchedAt || new Date().toISOString(),
-                      }}
-                    />
+                    <>
+                      <SkipTraceResults
+                        data={{
+                          skipTrace: (skipTraceResults.skipTrace as SkipTraceData | null) || null,
+                          socialMedia: (skipTraceResults.socialMedia as SocialMediaData) || {},
+                          email: emailQuery,
+                          searchedAt: skipTraceResults.searchedAt || new Date().toISOString(),
+                        }}
+                        searchType="email"
+                        query={emailQuery}
+                      />
+                      <Card className="mt-4 border-primary/20">
+                        <CardHeader>
+                          <CardTitle className="text-base flex items-center gap-2">
+                            <Bell className="h-4 w-4" />
+                            Monitor This Email
+                          </CardTitle>
+                          <CardDescription>
+                            Get notified when new information is found for this email address
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                          {subscriptionSuccess && subscriptionSuccess.includes(emailQuery) ? (
+                            <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                              <CheckCircle2 className="h-4 w-4" />
+                              <span className="text-sm">{subscriptionSuccess}</span>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="flex items-start space-x-2">
+                                <Checkbox
+                                  id="email-consent"
+                                  checked={consentChecked}
+                                  onCheckedChange={(checked) => setConsentChecked(checked as boolean)}
+                                />
+                                <label htmlFor="email-consent" className="text-xs text-muted-foreground leading-tight">
+                                  I have legal authorization to monitor this email address
+                                </label>
+                              </div>
+                              <Button
+                                onClick={() => handleCreateSubscription("email", emailQuery, "weekly")}
+                                disabled={creatingSubscription || !consentChecked}
+                                className="w-full"
+                                variant="outline"
+                              >
+                                {creatingSubscription ? (
+                                  <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Creating...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Bell className="mr-2 h-4 w-4" />
+                                    Create Monitoring Subscription
+                                  </>
+                                )}
+                              </Button>
+                            </>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </>
                   )}
                 </TabsContent>
 
@@ -390,14 +581,68 @@ export function SearchSection() {
                   </div>
                   {phoneValidationResult && <PhoneValidationResult data={phoneValidationResult} />}
                   {phoneSearchResults?.skipTraceData ? (
-                    <SkipTraceResults
-                      data={{
-                        skipTrace: (phoneSearchResults.skipTraceData as SkipTraceData) || null,
-                        socialMedia: {},
-                        email: "",
-                        searchedAt: phoneSearchResults.searchPerformed || new Date().toISOString(),
-                      }}
-                    />
+                    <>
+                      <SkipTraceResults
+                        data={{
+                          skipTrace: (phoneSearchResults.skipTraceData as SkipTraceData) || null,
+                          socialMedia: {},
+                          email: "",
+                          searchedAt: phoneSearchResults.searchPerformed || new Date().toISOString(),
+                        }}
+                        searchType="phone"
+                        query={phoneQuery}
+                      />
+                      <Card className="mt-4 border-primary/20">
+                        <CardHeader>
+                          <CardTitle className="text-base flex items-center gap-2">
+                            <Bell className="h-4 w-4" />
+                            Monitor This Phone Number
+                          </CardTitle>
+                          <CardDescription>
+                            Get notified when carrier or ownership information changes
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                          {subscriptionSuccess && subscriptionSuccess.includes(phoneQuery) ? (
+                            <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                              <CheckCircle2 className="h-4 w-4" />
+                              <span className="text-sm">{subscriptionSuccess}</span>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="flex items-start space-x-2">
+                                <Checkbox
+                                  id="phone-consent"
+                                  checked={consentChecked}
+                                  onCheckedChange={(checked) => setConsentChecked(checked as boolean)}
+                                />
+                                <label htmlFor="phone-consent" className="text-xs text-muted-foreground leading-tight">
+                                  I have legal authorization to monitor this phone number
+                                </label>
+                              </div>
+                              <Button
+                                onClick={() => handleCreateSubscription("phone", phoneQuery, "weekly")}
+                                disabled={creatingSubscription || !consentChecked}
+                                className="w-full"
+                                variant="outline"
+                              >
+                                {creatingSubscription ? (
+                                  <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Creating...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Bell className="mr-2 h-4 w-4" />
+                                    Create Monitoring Subscription
+                                  </>
+                                )}
+                              </Button>
+                            </>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </>
                   ) : null}
                 </TabsContent>
 
@@ -415,25 +660,36 @@ export function SearchSection() {
                         id="name-first"
                         name="firstName"
                         autoComplete="given-name"
-                        placeholder="First Name"
+                        placeholder="First Name *"
                         className="h-12"
                         value={nameFirst}
                         onChange={(e) => setNameFirst(e.target.value)}
+                        required
                       />
                       <Input
                         id="name-last"
                         name="lastName"
                         autoComplete="family-name"
-                        placeholder="Last Name"
+                        placeholder="Last Name *"
                         className="h-12"
                         value={nameLast}
                         onChange={(e) => setNameLast(e.target.value)}
+                        required
+                      />
+                      <Input
+                        id="name-middle"
+                        name="middleName"
+                        autoComplete="additional-name"
+                        placeholder="Middle Name (optional)"
+                        className="h-12"
+                        value={nameMiddle}
+                        onChange={(e) => setNameMiddle(e.target.value)}
                       />
                       <Input
                         id="name-city"
                         name="city"
                         autoComplete="address-level2"
-                        placeholder="City (optional)..."
+                        placeholder="City (optional)"
                         className="h-12"
                         value={nameCity}
                         onChange={(e) => setNameCity(e.target.value)}
@@ -442,11 +698,36 @@ export function SearchSection() {
                         id="name-state"
                         name="state"
                         autoComplete="address-level1"
-                        placeholder="State (optional)..."
+                        placeholder="State (optional)"
                         className="h-12"
                         value={nameState}
                         onChange={(e) => setNameState(e.target.value)}
                       />
+                      <div className="flex gap-2">
+                        <Input
+                          id="name-age"
+                          name="age"
+                          type="number"
+                          placeholder="Age (optional)"
+                          className="h-12"
+                          value={nameAge}
+                          onChange={(e) => setNameAge(e.target.value)}
+                          min="1"
+                          max="120"
+                        />
+                        <Input
+                          id="name-dob"
+                          name="dateOfBirth"
+                          type="date"
+                          placeholder="Date of Birth (optional)"
+                          className="h-12"
+                          value={nameDOB}
+                          onChange={(e) => setNameDOB(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      💡 Tip: Adding city/state, middle name, or age/DOB filters can significantly improve search accuracy for common names.
                     </div>
                     <Button
                       size="lg"
@@ -469,21 +750,100 @@ export function SearchSection() {
                   </div>
                   {nameSearchResults && (
                     <>
-                      {nameSearchResults.skipTraceData ? (
-                        <SkipTraceResults
-                          data={{
-                            skipTrace: (nameSearchResults.skipTraceData as SkipTraceData) || null,
-                            socialMedia:
-                              nameSearchResults.socialData?.platforms?.reduce((acc: Record<string, { registered: boolean; url?: string; username?: string }>, p: { platform?: string; url?: string; username?: string }) => {
-                                if (p.platform) {
-                                  acc[p.platform] = { registered: true, url: p.url, username: p.username }
-                                }
-                                return acc
-                              }, {}) || {},
-                            email: nameSearchResults.possibleEmails?.[0] || "",
-                            searchedAt: nameSearchResults.searchPerformed || new Date().toISOString(),
+                      {nameSearchResults.multipleResults && nameSearchResults.multipleResults.length > 1 ? (
+                        <NameSearchResults
+                          candidates={nameSearchResults.multipleResults.map((r: { person: unknown; confidence?: number; age?: number; location?: string }) => {
+                            const person = r.person as Record<string, unknown>
+                            return {
+                              person: {
+                                names: Array.isArray(person.names) ? person.names as Array<string | { display?: string; full?: string; first?: string; last?: string }> : undefined,
+                                addresses: Array.isArray(person.addresses) ? person.addresses as Array<string | { display?: string; city?: string; state?: string }> : undefined,
+                                phones: Array.isArray(person.phones) ? person.phones as Array<string | { number?: string; display?: string }> : undefined,
+                                emails: Array.isArray(person.emails) ? person.emails as Array<string | { address?: string; email?: string }> : undefined,
+                              },
+                              confidence: r.confidence,
+                              age: r.age,
+                              location: r.location,
+                            }
+                          })}
+                          query={{ firstName: nameFirst, lastName: nameLast, city: nameCity, state: nameState }}
+                          onSelectCandidate={(candidate) => {
+                            // Update to show selected candidate
+                            setNameSearchResults({
+                              ...nameSearchResults,
+                              skipTraceData: { person: candidate.person } as SkipTraceData,
+                            })
                           }}
                         />
+                      ) : nameSearchResults.skipTraceData ? (
+                        <>
+                          <SkipTraceResults
+                            data={{
+                              skipTrace: (nameSearchResults.skipTraceData as SkipTraceData) || null,
+                              socialMedia:
+                                nameSearchResults.socialData?.platforms?.reduce((acc: Record<string, { registered: boolean; url?: string; username?: string }>, p: { platform?: string; url?: string; username?: string }) => {
+                                  if (p.platform) {
+                                    acc[p.platform] = { registered: true, url: p.url, username: p.username }
+                                  }
+                                  return acc
+                                }, {}) || {},
+                              email: nameSearchResults.possibleEmails?.[0] || "",
+                              searchedAt: nameSearchResults.searchPerformed || new Date().toISOString(),
+                            }}
+                            searchType="name"
+                            query={{ firstName: nameFirst, lastName: nameLast, city: nameCity, state: nameState }}
+                          />
+                          <Card className="mt-4 border-primary/20">
+                            <CardHeader>
+                              <CardTitle className="text-base flex items-center gap-2">
+                                <Bell className="h-4 w-4" />
+                                Monitor This Person
+                              </CardTitle>
+                              <CardDescription>
+                                Get notified when new information is found for {nameFirst} {nameLast}
+                              </CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-3">
+                              {subscriptionSuccess && subscriptionSuccess.includes(`${nameFirst} ${nameLast}`) ? (
+                                <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                                  <CheckCircle2 className="h-4 w-4" />
+                                  <span className="text-sm">{subscriptionSuccess}</span>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="flex items-start space-x-2">
+                                    <Checkbox
+                                      id="name-consent"
+                                      checked={consentChecked}
+                                      onCheckedChange={(checked) => setConsentChecked(checked as boolean)}
+                                    />
+                                    <label htmlFor="name-consent" className="text-xs text-muted-foreground leading-tight">
+                                      I have legal authorization to monitor this person
+                                    </label>
+                                  </div>
+                                  <Button
+                                    onClick={() => handleCreateSubscription("name", `${nameFirst} ${nameLast}`, "weekly")}
+                                    disabled={creatingSubscription || !consentChecked}
+                                    className="w-full"
+                                    variant="outline"
+                                  >
+                                    {creatingSubscription ? (
+                                      <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        Creating...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Bell className="mr-2 h-4 w-4" />
+                                        Create Monitoring Subscription
+                                      </>
+                                    )}
+                                  </Button>
+                                </>
+                              )}
+                            </CardContent>
+                          </Card>
+                        </>
                       ) : (
                         <Card className="mt-6 border-2">
                           <CardHeader>
@@ -584,29 +944,35 @@ export function SearchSection() {
                     </div>
                   </div>
                   {addressSearchResults && (
-                    <Card className="mt-6 border-2">
-                      <CardHeader>
-                        <CardTitle className="text-lg">Address Search Results</CardTitle>
-                        <CardDescription>{addressSearchResults.query?.fullAddress || addressQuery}</CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-4">
-                          <div className="p-4 border rounded-lg">
-                            <p className="font-semibold">Property Information</p>
-                            <p className="text-sm text-muted-foreground">
-                              Type: {addressSearchResults.propertyInfo?.type || "Residential"}
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                              County: {addressSearchResults.propertyInfo?.county || "N/A"}
-                            </p>
-                          </div>
-                          <p className="text-sm text-muted-foreground">
-                            {addressSearchResults.instructions ||
-                              "To find residents, search by their name in the Name tab."}
-                          </p>
-                        </div>
-                      </CardContent>
-                    </Card>
+                    <AddressSearchResults
+                      data={{
+                        query: addressSearchResults.query?.street 
+                          ? {
+                              street: addressSearchResults.query.street,
+                              city: addressSearchResults.query.city || "",
+                              state: addressSearchResults.query.state || "",
+                              zip: addressSearchResults.query.zip || "",
+                              fullAddress: addressSearchResults.query.fullAddress || addressQuery,
+                            }
+                          : {
+                              street: addressQuery.split(",")[0] || "",
+                              city: "",
+                              state: "",
+                              zip: "",
+                              fullAddress: addressQuery,
+                            },
+                        residents: addressSearchResults.residents,
+                        propertyInfo: (addressSearchResults.propertyInfo?.address
+                          ? addressSearchResults.propertyInfo
+                          : {
+                              address: addressSearchResults.query?.fullAddress || addressQuery,
+                              type: addressSearchResults.propertyInfo?.type || "Residential",
+                              county: addressSearchResults.propertyInfo?.county,
+                            }) as { address: string; type: string; county?: string; estimatedValue?: string | number; owner?: string; lastSaleDate?: string },
+                        instructions: addressSearchResults.instructions,
+                        searchPerformed: addressSearchResults.searchPerformed || new Date().toISOString(),
+                      }}
+                    />
                   )}
                 </TabsContent>
 
@@ -660,19 +1026,40 @@ export function SearchSection() {
                     <Card className="mt-6 border-2">
                       <CardHeader>
                         <CardTitle className="text-lg">Monitoring Services</CardTitle>
+                        <CardDescription>
+                          Create subscriptions to monitor email addresses, phone numbers, or names for changes
+                        </CardDescription>
                       </CardHeader>
                       <CardContent>
                         {monitoringData.services ? (
                           <div className="space-y-4">
-                            {monitoringData.services.map((service: { name?: string; description?: string; contact?: string }, index: number) => (
+                            {monitoringData.services.map((service: { name?: string; description?: string; status?: string; targetType?: string }, index: number) => (
                               <div key={index} className="p-4 border rounded-lg">
-                                <p className="font-semibold">{service.name}</p>
-                                <p className="text-sm text-muted-foreground">{service.description}</p>
-                                {service.contact && (
-                                  <p className="text-sm text-primary mt-2">Contact: {service.contact}</p>
-                                )}
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <p className="font-semibold">{service.name}</p>
+                                    <p className="text-sm text-muted-foreground mt-1">{service.description}</p>
+                                  </div>
+                                  {service.status === "available" && (
+                                    <Badge variant="default" className="ml-2">Available</Badge>
+                                  )}
+                                  {service.status === "enterprise" && (
+                                    <Badge variant="secondary" className="ml-2">Enterprise</Badge>
+                                  )}
+                                </div>
                               </div>
                             ))}
+                            <div className="pt-4 border-t">
+                              <Button
+                                onClick={() => window.location.href = "/monitoring"}
+                                className="w-full"
+                                variant="outline"
+                              >
+                                <Bell className="mr-2 h-4 w-4" />
+                                View Monitoring Dashboard
+                                <ExternalLink className="ml-2 h-4 w-4" />
+                              </Button>
+                            </div>
                           </div>
                         ) : (
                           <pre className="text-xs bg-muted p-4 rounded-lg overflow-auto max-h-60">

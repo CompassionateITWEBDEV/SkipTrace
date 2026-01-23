@@ -1,0 +1,491 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "SkipTrace API",
+    "version": "1.0.0",
+    "description": "Comprehensive skip tracing and people search API. Search by email, phone, name, or address across multiple data sources.",
+    "contact": {
+      "name": "SkipTrace Support",
+      "email": "support@skiptrace.com"
+    },
+    "license": {
+      "name": "Proprietary"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://api.skiptrace.com/v1",
+      "description": "Production server"
+    },
+    {
+      "url": "http://localhost:3000/api/v1",
+      "description": "Development server"
+    }
+  ],
+  "security": [
+    {
+      "BearerAuth": []
+    },
+    {
+      "ApiKeyAuth": []
+    }
+  ],
+  "paths": {
+    "/search/email": {
+      "post": {
+        "summary": "Search by Email",
+        "description": "Search for person information using an email address. Returns skip trace data and social media presence.",
+        "operationId": "searchByEmail",
+        "tags": ["Search"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email"],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "example": "john.doe@example.com"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful search",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailSearchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - API key required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/search/phone": {
+      "post": {
+        "summary": "Search by Phone",
+        "description": "Search for person information using a phone number. Includes virtual number detection and carrier information.",
+        "operationId": "searchByPhone",
+        "tags": ["Search"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["phone"],
+                "properties": {
+                  "phone": {
+                    "type": "string",
+                    "example": "+15551234567",
+                    "description": "Phone number in E.164 format or 10-15 digits"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful search",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhoneSearchResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/search/name": {
+      "post": {
+        "summary": "Search by Name",
+        "description": "Search for person information using first and last name. Optional filters include city, state, age, and date of birth.",
+        "operationId": "searchByName",
+        "tags": ["Search"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["firstName", "lastName"],
+                "properties": {
+                  "firstName": {
+                    "type": "string",
+                    "example": "John"
+                  },
+                  "lastName": {
+                    "type": "string",
+                    "example": "Doe"
+                  },
+                  "middleName": {
+                    "type": "string",
+                    "example": "Michael"
+                  },
+                  "city": {
+                    "type": "string",
+                    "example": "New York"
+                  },
+                  "state": {
+                    "type": "string",
+                    "example": "NY",
+                    "description": "Two-letter state code"
+                  },
+                  "age": {
+                    "type": "integer",
+                    "example": 35
+                  },
+                  "dateOfBirth": {
+                    "type": "string",
+                    "format": "date",
+                    "example": "1988-01-15"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful search",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NameSearchResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/search/address": {
+      "post": {
+        "summary": "Search by Address",
+        "description": "Search for residents and property information using an address.",
+        "operationId": "searchByAddress",
+        "tags": ["Search"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["street"],
+                "properties": {
+                  "street": {
+                    "type": "string",
+                    "example": "123 Main St"
+                  },
+                  "city": {
+                    "type": "string",
+                    "example": "New York"
+                  },
+                  "state": {
+                    "type": "string",
+                    "example": "NY"
+                  },
+                  "zip": {
+                    "type": "string",
+                    "example": "10001"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful search",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddressSearchResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/search/comprehensive": {
+      "post": {
+        "summary": "Comprehensive Search",
+        "description": "AI-enhanced search that combines multiple inputs (email, phone, name, address) and correlates results across sources.",
+        "operationId": "comprehensiveSearch",
+        "tags": ["Search"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "phone": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "Full name or 'firstName lastName'"
+                  },
+                  "address": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful comprehensive search",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComprehensiveSearchResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Bearer token authentication"
+      },
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-api-key",
+        "description": "API key authentication"
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Error message"
+          },
+          "message": {
+            "type": "string",
+            "description": "Detailed error message"
+          }
+        }
+      },
+      "RateLimitError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "example": "Rate limit exceeded"
+          },
+          "remaining": {
+            "type": "integer",
+            "description": "Remaining requests in current period"
+          }
+        }
+      },
+      "EmailSearchResponse": {
+        "type": "object",
+        "properties": {
+          "skipTrace": {
+            "type": "object",
+            "description": "Skip trace data"
+          },
+          "socialMedia": {
+            "type": "object",
+            "description": "Social media presence"
+          },
+          "email": {
+            "type": "string"
+          },
+          "emailHealth": {
+            "type": "object",
+            "properties": {
+              "breachCheck": {
+                "type": "object"
+              },
+              "reputation": {
+                "type": "object"
+              }
+            }
+          },
+          "searchedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PhoneSearchResponse": {
+        "type": "object",
+        "properties": {
+          "skipTraceData": {
+            "type": "object"
+          },
+          "virtualCheck": {
+            "type": "object",
+            "properties": {
+              "isVirtual": {
+                "type": "boolean"
+              },
+              "carrier": {
+                "type": "string"
+              },
+              "lineType": {
+                "type": "string"
+              }
+            }
+          },
+          "geolocation": {
+            "type": "object"
+          }
+        }
+      },
+      "NameSearchResponse": {
+        "type": "object",
+        "properties": {
+          "skipTraceData": {
+            "type": "object"
+          },
+          "multipleResults": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "person": {
+                  "type": "object"
+                },
+                "confidence": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "socialData": {
+            "type": "object"
+          }
+        }
+      },
+      "AddressSearchResponse": {
+        "type": "object",
+        "properties": {
+          "skipTraceData": {
+            "type": "object"
+          },
+          "residents": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "propertyInfo": {
+            "type": "object"
+          }
+        }
+      },
+      "ComprehensiveSearchResponse": {
+        "type": "object",
+        "properties": {
+          "inputData": {
+            "type": "object"
+          },
+          "skipTraceData": {
+            "type": "object"
+          },
+          "socialMediaData": {
+            "type": "object"
+          },
+          "phoneValidation": {
+            "type": "object"
+          },
+          "nameSearchData": {
+            "type": "object"
+          },
+          "correlatedData": {
+            "type": "object"
+          },
+          "confidenceScore": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "dataQuality": {
+            "type": "string",
+            "enum": ["high", "medium", "low"]
+          },
+          "summary": {
+            "type": "string"
+          },
+          "insights": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dataPoints": {
+            "type": "integer"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Search",
+      "description": "Search endpoints for finding person information"
+    }
+  ]
+}

@@ -18,8 +18,8 @@ export default function BatchSearchPage() {
     // Simulate batch processing
     await new Promise((resolve) => setTimeout(resolve, 2000))
     setResults([
-      { input: "test@example.com", status: "success", matches: 12 },
-      { input: "+1234567890", status: "success", matches: 8 },
+      { input: "test@example.com", type: "email", status: "success", matches: 12 },
+      { input: "+1234567890", type: "phone", status: "success", matches: 8 },
     ])
     setProcessing(false)
   }

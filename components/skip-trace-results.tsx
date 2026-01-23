@@ -13,11 +13,41 @@ interface SkipTraceResultsProps {
     socialMedia: SocialMediaData
     email: string
     searchedAt: string
+    emailHealth?: {
+      breachCheck?: {
+        breached: boolean
+        breachCount?: number
+        breaches?: Array<{ Name: string; Domain: string; BreachDate: string }>
+      }
+      reputation?: {
+        deliverable: boolean
+        riskScore?: number
+        domain?: string
+        suggestions?: string[]
+      }
+    }
   }
+  searchType?: "email" | "phone" | "name" | "address" | "comprehensive"
+  query?: string | Record<string, unknown>
 }
 
-export function SkipTraceResults({ data }: SkipTraceResultsProps) {
-  const { skipTrace, socialMedia, email } = data
+export function SkipTraceResults({ data, searchType, query }: SkipTraceResultsProps) {
+  const { skipTrace, socialMedia, email, emailHealth } = data
+  
+  // Generate search label from query
+  const searchLabel = searchType && query 
+    ? typeof query === 'string' 
+      ? query 
+      : searchType === 'email' && 'email' in query 
+        ? String(query.email)
+        : searchType === 'phone' && 'phone' in query
+          ? String(query.phone)
+          : searchType === 'name' && 'firstName' in query && 'lastName' in query
+            ? `${query.firstName} ${query.lastName}`
+            : searchType === 'address' && 'street' in query
+              ? String(query.street)
+              : email || 'Search Result'
+    : email || 'Search Result'
 
   // Parse skip trace data
   const person = skipTrace?.person || skipTrace?.data?.person || skipTrace
@@ -45,12 +75,17 @@ export function SkipTraceResults({ data }: SkipTraceResultsProps) {
     exportToJSON(skipTrace, "skip_trace_results.json");
   };
 
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     if (skipTrace) {
-      const htmlContent = `<h1>Skip Trace Report</h1><pre>${JSON.stringify(skipTrace, null, 2)}</pre>`
-      exportToPDF(htmlContent, "skip_trace_results.pdf");
+      await exportToPDF(
+        { skipTrace, socialMedia, email },
+        "skip_trace_results",
+        "Skip Trace Report",
+        searchType,
+        query,
+      )
     }
-  };
+  }
 
   return (
     <div className="mt-6 space-y-4">
@@ -61,17 +96,44 @@ export function SkipTraceResults({ data }: SkipTraceResultsProps) {
             <div>
               <CardTitle className="text-xl flex items-center gap-2 mb-2">
                 <User className="h-5 w-5" />
-                Skip Trace Report
+                {searchType === "email" ? "Email Search Report" :
+                 searchType === "phone" ? "Phone Search Report" :
+                 searchType === "name" ? "Name Search Report" :
+                 searchType === "address" ? "Address Search Report" :
+                 searchType === "comprehensive" ? "Comprehensive Search Report" :
+                 "Skip Trace Report"}
               </CardTitle>
               <div className="flex items-center gap-2">
-                <Mail className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">{email}</span>
+                {searchType === "email" && <Mail className="h-4 w-4 text-muted-foreground" />}
+                {searchType === "phone" && <Phone className="h-4 w-4 text-muted-foreground" />}
+                {searchType === "name" && <User className="h-4 w-4 text-muted-foreground" />}
+                {searchType === "address" && <MapPin className="h-4 w-4 text-muted-foreground" />}
+                <span className="text-sm text-muted-foreground">{searchLabel}</span>
               </div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <Badge variant={hasResults ? "default" : "secondary"} className="text-sm">
                 {hasResults ? "Records Found" : "No Records"}
               </Badge>
+              {hasResults && (
+                <>
+                  {names.length > 0 && emails.length > 0 && phones.length > 0 && (
+                    <Badge variant="default" className="text-sm bg-green-600">
+                      High Quality
+                    </Badge>
+                  )}
+                  {(names.length > 0 && (emails.length > 0 || phones.length > 0)) && !(names.length > 0 && emails.length > 0 && phones.length > 0) && (
+                    <Badge variant="secondary" className="text-sm">
+                      Medium Quality
+                    </Badge>
+                  )}
+                  {names.length === 0 && emails.length === 0 && phones.length === 0 && addresses.length === 0 && (
+                    <Badge variant="outline" className="text-sm">
+                      Low Quality
+                    </Badge>
+                  )}
+                </>
+              )}
               {hasResults && (
                 <div className="flex gap-1">
                   <Button size="sm" variant="outline" onClick={handleExportCSV} className="gap-1 bg-transparent">
@@ -207,6 +269,63 @@ export function SkipTraceResults({ data }: SkipTraceResultsProps) {
               </div>
             </div>
           )}
+
+          {/* Email Health Section */}
+          {emailHealth && searchType === "email" && (
+            <div>
+              <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-orange-600" />
+                Email Health & Security
+              </h3>
+              <div className="space-y-3">
+                {emailHealth.breachCheck && (
+                  <div className={`rounded-lg border px-4 py-3 ${emailHealth.breachCheck.breached ? "border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/30" : "border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950/30"}`}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium">
+                          {emailHealth.breachCheck.breached 
+                            ? `⚠️ Email found in ${emailHealth.breachCheck.breachCount || 0} data breach${(emailHealth.breachCheck.breachCount || 0) > 1 ? "es" : ""}`
+                            : "✓ Email not found in known data breaches"}
+                        </p>
+                        {emailHealth.breachCheck.breached && emailHealth.breachCheck.breaches && emailHealth.breachCheck.breaches.length > 0 && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Breaches: {emailHealth.breachCheck.breaches.map((b: { Name: string }) => b.Name).join(", ")}
+                          </p>
+                        )}
+                      </div>
+                      <Badge variant={emailHealth.breachCheck.breached ? "destructive" : "default"}>
+                        {emailHealth.breachCheck.breached ? "Compromised" : "Safe"}
+                      </Badge>
+                    </div>
+                  </div>
+                )}
+                {emailHealth.reputation && (
+                  <div className="rounded-lg border bg-card px-4 py-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium">
+                          {emailHealth.reputation.deliverable ? "✓ Email appears deliverable" : "⚠️ Email may not be deliverable"}
+                        </p>
+                        {emailHealth.reputation.domain && (
+                          <p className="text-xs text-muted-foreground mt-1">Domain: {emailHealth.reputation.domain}</p>
+                        )}
+                        {emailHealth.reputation.suggestions && emailHealth.reputation.suggestions.length > 0 && (
+                          <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">
+                            {emailHealth.reputation.suggestions.join(", ")}
+                          </p>
+                        )}
+                      </div>
+                      {emailHealth.reputation.riskScore !== undefined && (
+                        <Badge variant={emailHealth.reputation.riskScore > 0.7 ? "destructive" : emailHealth.reputation.riskScore > 0.4 ? "secondary" : "default"}>
+                          Risk: {Math.round(emailHealth.reputation.riskScore * 100)}%
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -257,7 +376,15 @@ export function SkipTraceResults({ data }: SkipTraceResultsProps) {
             <AlertTriangle className="h-12 w-12 text-yellow-600 mx-auto mb-4" />
             <h3 className="text-lg font-semibold mb-2">No Records Found</h3>
             <p className="text-sm text-muted-foreground">
-              No information was found for this email address in our database.
+              {searchType === "email" 
+                ? "No information was found for this email address in our database."
+                : searchType === "phone"
+                ? "No information was found for this phone number in our database."
+                : searchType === "name"
+                ? "No information was found for this name in our database."
+                : searchType === "address"
+                ? "No information was found for this address in our database."
+                : "No information was found in our database."}
             </p>
           </CardContent>
         </Card>

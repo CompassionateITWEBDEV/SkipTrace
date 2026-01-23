@@ -1,0 +1,175 @@
+generator client {
+  provider   = "prisma-client"
+  output     = "../node_modules/.prisma/client"
+  engineType = "client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String                   @id @default(cuid())
+  email         String                   @unique
+  passwordHash  String?
+  name          String?
+  plan          Plan                     @default(FREE)
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+  apiKeys       ApiKey[]
+  batchJobs     BatchJob[]
+  subscriptions MonitoringSubscription[]
+  notifications Notification[]
+  reports       Report[]
+  savedSearches SavedSearch[]
+  searchLogs    SearchLog[]
+
+  @@index([email])
+  @@index([plan])
+}
+
+model ApiKey {
+  id        String    @id @default(cuid())
+  userId    String
+  key       String    @unique
+  name      String
+  lastUsed  DateTime?
+  createdAt DateTime  @default(now())
+  expiresAt DateTime?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([key])
+}
+
+model SearchLog {
+  id           String     @id @default(cuid())
+  userId       String?
+  searchType   SearchType
+  query        String
+  resultsCount Int        @default(0)
+  success      Boolean    @default(false)
+  responseTime Int?
+  error        String?
+  timestamp    DateTime   @default(now())
+  user         User?      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([timestamp])
+  @@index([searchType])
+  @@index([success])
+}
+
+model SavedSearch {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  query     String
+  results   Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model Report {
+  id          String     @id @default(cuid())
+  userId      String
+  title       String
+  query       String
+  results     Json
+  searchType  SearchType
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  shared      Boolean    @default(false)
+  sharedToken String?    @unique
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([sharedToken])
+}
+
+model MonitoringSubscription {
+  id          String    @id @default(cuid())
+  userId      String
+  targetType  String
+  targetValue String
+  frequency   String    @default("weekly")
+  active      Boolean   @default(true)
+  lastChecked DateTime?
+  nextCheck   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, targetType, targetValue])
+  @@index([userId])
+  @@index([active])
+  @@index([nextCheck])
+}
+
+model BatchJob {
+  id             String         @id @default(cuid())
+  userId         String?
+  status         BatchJobStatus @default(PENDING)
+  inputCount     Int
+  processedCount Int            @default(0)
+  successCount   Int            @default(0)
+  errorCount     Int            @default(0)
+  results        Json?
+  error          String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  completedAt    DateTime?
+  user           User?          @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  message   String
+  metadata  Json?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([read])
+  @@index([createdAt])
+  @@index([type])
+}
+
+enum Plan {
+  FREE
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum SearchType {
+  EMAIL
+  PHONE
+  NAME
+  ADDRESS
+  COMPREHENSIVE
+  BATCH
+}
+
+enum BatchJobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}

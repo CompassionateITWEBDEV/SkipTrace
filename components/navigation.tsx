@@ -2,12 +2,33 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { useSession, signOut } from "next-auth/react"
 import { Button } from "@/components/ui/button"
-import { Search, FileText, DollarSign, BookOpen, Menu, X, BarChart3, Layers } from "lucide-react"
+import {
+  Search,
+  FileText,
+  DollarSign,
+  BookOpen,
+  Menu,
+  X,
+  BarChart3,
+  Layers,
+  User,
+  LogOut,
+} from "lucide-react"
 import { useState } from "react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 export function Navigation() {
   const pathname = usePathname()
+  const { data: session, status } = useSession()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   const links = [
@@ -54,12 +75,66 @@ export function Navigation() {
           </div>
 
           <div className="hidden md:flex items-center gap-3">
-            <Link href="/account">
-              <Button variant="ghost" size="sm">
-                Account
-              </Button>
-            </Link>
-            <Button size="sm">Get Started</Button>
+            {status === "loading" ? (
+              <div className="h-9 w-20 bg-muted animate-pulse rounded" />
+            ) : session ? (
+              <>
+                <Link href="/account">
+                  <Button variant="ghost" size="sm" className="gap-2">
+                    <User className="h-4 w-4" />
+                    Account
+                  </Button>
+                </Link>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" className="gap-2">
+                      {session.user?.name || session.user?.email}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuLabel>
+                      <div className="flex flex-col space-y-1">
+                        <p className="text-sm font-medium">{session.user?.name || "User"}</p>
+                        <p className="text-xs text-muted-foreground">{session.user?.email}</p>
+                        <p className="text-xs text-muted-foreground">Plan: {session.user?.plan}</p>
+                      </div>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link href="/account" className="cursor-pointer">
+                        <User className="mr-2 h-4 w-4" />
+                        Account Settings
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/analytics" className="cursor-pointer">
+                        <BarChart3 className="mr-2 h-4 w-4" />
+                        Analytics
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => signOut({ callbackUrl: "/" })}
+                      className="cursor-pointer text-destructive"
+                    >
+                      <LogOut className="mr-2 h-4 w-4" />
+                      Sign Out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
+            ) : (
+              <>
+                <Link href="/auth/signin">
+                  <Button variant="ghost" size="sm">
+                    Sign In
+                  </Button>
+                </Link>
+                <Link href="/auth/signup">
+                  <Button size="sm">Get Started</Button>
+                </Link>
+              </>
+            )}
           </div>
 
           <button

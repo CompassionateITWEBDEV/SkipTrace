@@ -10,6 +10,8 @@ import { Progress } from "@/components/ui/progress"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, Search, TrendingUp, CheckCircle2, AlertTriangle } from "lucide-react"
 import type { EnrichmentResult } from "@/lib/types"
+import { generateDetailedSummary } from "@/lib/summary-generator"
+import { correlatePersonData } from "@/lib/data-correlation"
 
 export function ComprehensiveSearch() {
   const [loading, setLoading] = useState(false)
@@ -152,40 +154,94 @@ export function ComprehensiveSearch() {
                   {results.dataPoints} Data Points
                 </Badge>
                 <Badge
-                  variant={results.confidenceScore > 70 ? "default" : "secondary"}
+                  variant={results.confidenceScore > 70 ? "default" : results.confidenceScore > 40 ? "secondary" : "outline"}
                   className="text-sm"
                 >
                   {results.confidenceScore}% Confidence
                 </Badge>
+                {results.dataQuality && (
+                  <Badge
+                    variant={results.dataQuality === "high" ? "default" : results.dataQuality === "medium" ? "secondary" : "outline"}
+                    className="text-sm"
+                  >
+                    {results.dataQuality.charAt(0).toUpperCase() + results.dataQuality.slice(1)} Quality
+                  </Badge>
+                )}
               </div>
             </div>
             <Progress value={results.confidenceScore} className="mt-4" />
           </CardHeader>
           <CardContent className="space-y-6 pt-6">
+            {/* AI-Generated Summary */}
+            {(() => {
+              const sources = [
+                results.skipTraceData,
+                results.socialMediaData,
+                results.phoneValidation,
+                results.nameSearchData,
+              ].filter(Boolean)
+
+              if (sources.length > 0) {
+                const correlated = correlatePersonData(sources)
+                const summary = generateDetailedSummary(correlated.correlatedData, results.confidenceScore)
+
+                return (
+                  <div className="space-y-2 p-4 bg-primary/5 rounded-lg border border-primary/20">
+                    <h3 className="font-semibold text-lg flex items-center gap-2">
+                      <TrendingUp className="h-5 w-5 text-primary" />
+                      AI-Generated Summary
+                    </h3>
+                    <p className="text-sm leading-relaxed">{summary}</p>
+                    {correlated.matchingFields.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <span className="text-xs text-muted-foreground">Matching fields:</span>
+                        {correlated.matchingFields.map((field) => (
+                          <Badge key={field} variant="outline" className="text-xs capitalize">
+                            {field}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                    {correlated.conflicts.length > 0 && (
+                      <div className="mt-3">
+                        <p className="text-xs font-semibold text-yellow-600 mb-1">Conflicts detected:</p>
+                        <ul className="text-xs text-muted-foreground list-disc list-inside">
+                          {correlated.conflicts.map((conflict, idx) => (
+                            <li key={idx}>{conflict}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )
+              }
+              return null
+            })()}
+
             {results.skipTraceData && (
               <div className="space-y-2">
                 <h3 className="font-semibold text-lg">Skip Trace Results</h3>
-                <pre className="bg-muted p-4 rounded-lg text-sm overflow-auto max-h-60">
-                  {JSON.stringify(results.skipTraceData, null, 2)}
-                </pre>
+                <div className="bg-muted p-4 rounded-lg text-sm overflow-auto max-h-60">
+                  <pre>{JSON.stringify(results.skipTraceData, null, 2)}</pre>
+                </div>
               </div>
             )}
 
             {results.socialMediaData && (
               <div className="space-y-2">
                 <h3 className="font-semibold text-lg">Social Media Presence</h3>
-                <pre className="bg-muted p-4 rounded-lg text-sm overflow-auto max-h-60">
-                  {JSON.stringify(results.socialMediaData, null, 2)}
-                </pre>
+                <div className="bg-muted p-4 rounded-lg text-sm overflow-auto max-h-60">
+                  <pre>{JSON.stringify(results.socialMediaData, null, 2)}</pre>
+                </div>
               </div>
             )}
 
             {results.phoneValidation && (
               <div className="space-y-2">
                 <h3 className="font-semibold text-lg">Phone Validation</h3>
-                <pre className="bg-muted p-4 rounded-lg text-sm overflow-auto max-h-60">
-                  {JSON.stringify(results.phoneValidation, null, 2)}
-                </pre>
+                <div className="bg-muted p-4 rounded-lg text-sm overflow-auto max-h-60">
+                  <pre>{JSON.stringify(results.phoneValidation, null, 2)}</pre>
+                </div>
               </div>
             )}
           </CardContent>
