@@ -18,6 +18,11 @@ export async function POST(request: Request) {
     if (state) params.append("state", state)
     if (zip) params.append("zip", zip)
 
+    const apiKey = process.env.RAPIDAPI_KEY
+    if (!apiKey) {
+      return NextResponse.json({ error: "API key not configured" }, { status: 500 })
+    }
+
     let skipTraceData = null
     try {
       const skipTraceResponse = await fetch(
@@ -26,7 +31,7 @@ export async function POST(request: Request) {
           method: "GET",
           headers: {
             "x-rapidapi-host": "skip-tracing-working-api.p.rapidapi.com",
-            "x-rapidapi-key": "9a54072d5cmsh961d1d5cc06d163p169947jsn2a30428d73df",
+            "x-rapidapi-key": apiKey,
           },
         },
       )

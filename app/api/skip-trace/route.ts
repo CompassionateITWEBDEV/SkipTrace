@@ -8,6 +8,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Email is required" }, { status: 400 })
     }
 
+    const apiKey = process.env.RAPIDAPI_KEY
+    if (!apiKey) {
+      return NextResponse.json({ error: "API key not configured" }, { status: 500 })
+    }
+
     // Call the Skip Tracing API
     const skipTraceResponse = await fetch(
       `https://skip-tracing-working-api.p.rapidapi.com/search/byemail?email=${encodeURIComponent(email)}&phone=1`,
@@ -15,7 +20,7 @@ export async function POST(request: NextRequest) {
         method: "GET",
         headers: {
           "x-rapidapi-host": "skip-tracing-working-api.p.rapidapi.com",
-          "x-rapidapi-key": "9a54072d5cmsh961d1d5cc06d163p169947jsn2a30428d73df",
+          "x-rapidapi-key": apiKey,
         },
       },
     )
@@ -34,7 +39,7 @@ export async function POST(request: NextRequest) {
         method: "GET",
         headers: {
           "x-rapidapi-host": "email-social-media-checker.p.rapidapi.com",
-          "x-rapidapi-key": "9a54072d5cmsh961d1d5cc06d163p169947jsn2a30428d73df",
+          "x-rapidapi-key": apiKey,
         },
       },
     )

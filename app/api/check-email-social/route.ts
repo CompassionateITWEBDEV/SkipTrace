@@ -8,13 +8,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Email is required" }, { status: 400 })
     }
 
+    const apiKey = process.env.RAPIDAPI_KEY
+    if (!apiKey) {
+      return NextResponse.json({ error: "API key not configured" }, { status: 500 })
+    }
+
     const response = await fetch(
       `https://email-social-media-checker.p.rapidapi.com/check_email?email=${encodeURIComponent(email)}`,
       {
         method: "GET",
         headers: {
           "x-rapidapi-host": "email-social-media-checker.p.rapidapi.com",
-          "x-rapidapi-key": "9a54072d5cmsh961d1d5cc06d163p169947jsn2a30428d73df",
+          "x-rapidapi-key": apiKey,
         },
       },
     )

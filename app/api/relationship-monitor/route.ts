@@ -2,26 +2,31 @@ import { type NextRequest, NextResponse } from "next/server"
 
 export async function GET(_request: NextRequest) {
   try {
+    const apiKey = process.env.RAPIDAPI_KEY
+    if (!apiKey) {
+      return NextResponse.json({ error: "API key not configured" }, { status: 500 })
+    }
+
     const [response1, response2, response3] = await Promise.all([
       fetch("https://catch-cheating-boyfriend-hire-adware-recovery-specialist.p.rapidapi.com/", {
         method: "GET",
         headers: {
           "x-rapidapi-host": "catch-cheating-boyfriend-hire-adware-recovery-specialist.p.rapidapi.com",
-          "x-rapidapi-key": "9a54072d5cmsh961d1d5cc06d163p169947jsn2a30428d73df",
+          "x-rapidapi-key": apiKey,
         },
       }),
       fetch("https://professional-cybernet-surveillance-for-cheating-spouse.p.rapidapi.com/", {
         method: "GET",
         headers: {
           "x-rapidapi-host": "professional-cybernet-surveillance-for-cheating-spouse.p.rapidapi.com",
-          "x-rapidapi-key": "9a54072d5cmsh961d1d5cc06d163p169947jsn2a30428d73df",
+          "x-rapidapi-key": apiKey,
         },
       }),
       fetch("https://contact-adware-recovery-specialist-to-spy-on-your-cheating.p.rapidapi.com/", {
         method: "GET",
         headers: {
           "x-rapidapi-host": "contact-adware-recovery-specialist-to-spy-on-your-cheating.p.rapidapi.com",
-          "x-rapidapi-key": "9a54072d5cmsh961d1d5cc06d163p169947jsn2a30428d73df",
+          "x-rapidapi-key": apiKey,
         },
       }),
     ])

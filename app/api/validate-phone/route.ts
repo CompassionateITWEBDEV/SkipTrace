@@ -29,13 +29,18 @@ export async function POST(request: Request) {
       )
     }
 
+    const apiKey = process.env.RAPIDAPI_KEY
+    if (!apiKey) {
+      return NextResponse.json({ error: "API key not configured" }, { status: 500 })
+    }
+
     // Call the Virtual Phone Numbers Detector API
     const response = await fetch("https://virtual-phone-numbers-detector.p.rapidapi.com/check-number", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-rapidapi-host": "virtual-phone-numbers-detector.p.rapidapi.com",
-        "x-rapidapi-key": "9a54072d5cmsh961d1d5cc06d163p169947jsn2a30428d73df",
+        "x-rapidapi-key": apiKey,
       },
       body: JSON.stringify({ phone: formattedPhone }),
     })

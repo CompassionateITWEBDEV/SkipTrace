@@ -17,13 +17,18 @@ export async function POST(request: Request) {
     if (city) params.append("city", city)
     if (state) params.append("state", state)
 
+    const apiKey = process.env.RAPIDAPI_KEY
+    if (!apiKey) {
+      return NextResponse.json({ error: "API key not configured" }, { status: 500 })
+    }
+
     const skipTraceResponse = await fetch(
       `https://skip-tracing-working-api.p.rapidapi.com/search/byname?${params.toString()}`,
       {
         method: "GET",
         headers: {
           "x-rapidapi-host": "skip-tracing-working-api.p.rapidapi.com",
-          "x-rapidapi-key": "9a54072d5cmsh961d1d5cc06d163p169947jsn2a30428d73df",
+          "x-rapidapi-key": apiKey,
         },
       },
     )
@@ -50,7 +55,7 @@ export async function POST(request: Request) {
           method: "GET",
           headers: {
             "x-rapidapi-host": "email-social-media-checker.p.rapidapi.com",
-            "x-rapidapi-key": "9a54072d5cmsh961d1d5cc06d163p169947jsn2a30428d73df",
+            "x-rapidapi-key": apiKey,
           },
         },
       )
@@ -61,20 +66,20 @@ export async function POST(request: Request) {
       console.error("Social media check failed:", e)
     }
 
-    interface SocialMediaValue {
-      registered?: boolean
-      username?: string
-      url?: string
-    }
-
     const socialPlatforms = socialData
-      ? Object.entries(socialData as Record<string, SocialMediaValue>)
-          .filter(([, value]) => value?.registered === true)
-          .map(([key, value]) => ({
-            platform: key,
-            username: value?.username || null,
-            url: value?.url || null,
-          }))
+      ? Object.entries(socialData)
+          .filter(([_key, value]: [string, unknown]) => {
+            const val = value as { registered?: boolean } | null
+            return val?.registered === true
+          })
+          .map(([key, value]: [string, unknown]) => {
+            const val = value as { username?: string; url?: string } | null
+            return {
+              platform: key,
+              username: val?.username || null,
+              url: val?.url || null,
+            }
+          })
       : []
 
     return NextResponse.json({

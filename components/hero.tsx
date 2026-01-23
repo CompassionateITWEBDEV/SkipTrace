@@ -14,12 +14,12 @@ export function Hero() {
           </div>
 
           <h1 className="text-balance text-5xl font-bold tracking-tight text-foreground sm:text-6xl lg:text-7xl">
-            Locate Anyone with Powerful Skip Tracing
+            <span className="bg-gradient-to-r from-primary via-accent to-primary/60 bg-clip-text text-transparent">MASE Intelligence</span>
+            <br />Skip-Tracer
           </h1>
 
           <p className="mt-6 text-pretty text-lg leading-relaxed text-muted-foreground sm:text-xl">
-            Find hard-to-reach individuals instantly. Search across 48+ social platforms, verify emails, and access
-            comprehensive background data all in one place.
+            AI-powered skip tracing with comprehensive data enrichment, batch processing, and real-time analytics. Search across 48+ platforms with enterprise-grade accuracy and correlation scoring.
           </p>
 
           <div className="mt-10 flex items-center justify-center gap-4">

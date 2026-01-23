@@ -10,69 +10,20 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Search, Mail, Phone, User, MapPin, Loader2, AlertTriangle, Eye } from "lucide-react"
 import { PhoneValidationResult } from "./phone-validation-result"
-import { SkipTraceResults, type SkipTraceData, type SocialMediaValue as SocialMediaValueType } from "./skip-trace-results"
+import { SkipTraceResults } from "./skip-trace-results"
+import type { SkipTraceData, SocialMediaData } from "@/lib/types"
 
-interface PhoneValidationDataLocal {
-  phone: string
+interface PhoneValidationData {
+  phoneNumber: string
+  isValid: boolean
   isVirtual: boolean
   isDisposable: boolean
-  carrier?: string
-  lineType?: string
-  riskScore?: number
-  country?: string
-  countryCode?: string
-}
-
-interface SkipTraceResult {
-  skipTrace?: SkipTraceData | null
-  socialMedia?: Record<string, boolean | SocialMediaValueType> | null
-  email?: string
-  searchedAt?: string
-  [key: string]: unknown
-}
-
-interface PhoneSearchResult {
-  skipTraceData?: SkipTraceData | null
-  virtualCheck?: unknown
-  searchPerformed?: string
-  [key: string]: unknown
-}
-
-interface SocialPlatform {
-  platform: string
-  username?: string | null
-  url?: string | null
-}
-
-interface SocialData {
-  platforms?: SocialPlatform[]
-  totalFound?: number
-}
-
-interface NameSearchResult {
-  skipTraceData?: unknown
-  socialData?: SocialData
-  possibleEmails?: string[]
-  searchPerformed?: string
-  [key: string]: unknown
-}
-
-interface AddressSearchResult {
-  query?: { fullAddress?: string }
-  propertyInfo?: { type?: string; county?: string }
-  instructions?: string
-  [key: string]: unknown
-}
-
-interface MonitoringService {
-  name?: string
-  description?: string
-  contact?: string
-}
-
-interface MonitoringData {
-  services?: MonitoringService[]
-  [key: string]: unknown
+  riskScore: number
+  carrier: string
+  lineType: string
+  country: string
+  warnings: string[]
+  lastSeen: string | null
 }
 
 export function SearchSection() {
@@ -85,12 +36,12 @@ export function SearchSection() {
   const [addressQuery, setAddressQuery] = useState("")
   const [isSearching, setIsSearching] = useState(false)
 
-  const [skipTraceResults, setSkipTraceResults] = useState<SkipTraceResult | null>(null)
-  const [phoneSearchResults, setPhoneSearchResults] = useState<PhoneSearchResult | null>(null)
-  const [phoneValidationResult, setPhoneValidationResult] = useState<PhoneValidationDataLocal | null>(null)
-  const [monitoringData, setMonitoringData] = useState<MonitoringData | null>(null)
-  const [nameSearchResults, setNameSearchResults] = useState<NameSearchResult | null>(null)
-  const [addressSearchResults, setAddressSearchResults] = useState<AddressSearchResult | null>(null)
+  const [skipTraceResults, setSkipTraceResults] = useState<{ skipTrace?: unknown; socialMedia?: Record<string, unknown>; searchedAt?: string } | null>(null)
+  const [phoneSearchResults, setPhoneSearchResults] = useState<{ skipTraceData?: unknown; searchPerformed?: string } | null>(null)
+  const [phoneValidationResult, setPhoneValidationResult] = useState<PhoneValidationData | null>(null)
+  const [monitoringData, setMonitoringData] = useState<{ services?: Array<{ name?: string; description?: string; contact?: string }> } | null>(null)
+  const [nameSearchResults, setNameSearchResults] = useState<{ skipTraceData?: unknown; socialData?: { platforms?: Array<{ platform?: string; url?: string; username?: string }> }; possibleEmails?: string[]; searchPerformed?: string } | null>(null)
+  const [addressSearchResults, setAddressSearchResults] = useState<{ query?: { fullAddress?: string }; propertyInfo?: { type?: string; county?: string }; instructions?: string } | null>(null)
   const [errorMessage, setErrorMessage] = useState<string>("")
   const [consentChecked, setConsentChecked] = useState(false)
 
@@ -158,16 +109,24 @@ export function SearchSection() {
         setPhoneSearchResults(data)
         // Also set validation result if available
         if (data.virtualCheck) {
-          const vc = data.virtualCheck
+          const warnings: string[] = []
+          const isVirtual = data.virtualCheck.is_virtual || data.virtualCheck.isVirtual || false
+          const isDisposable = data.virtualCheck.is_disposable || data.virtualCheck.isDisposable || false
+          
+          if (isVirtual) warnings.push("This is a virtual phone number")
+          if (isDisposable) warnings.push("This is a disposable phone number")
+          
           setPhoneValidationResult({
-            phone: cleanedPhone,
-            isVirtual: vc.is_virtual || vc.isVirtual || false,
-            isDisposable: vc.is_disposable || vc.isDisposable || false,
-            carrier: vc.carrier || "",
-            lineType: vc.line_type || vc.lineType || "",
-            riskScore: vc.risk_score || vc.riskScore || 0,
-            country: vc.country || "",
-            countryCode: vc.country_code || vc.countryCode,
+            phoneNumber: cleanedPhone,
+            isValid: !isVirtual && !isDisposable,
+            isVirtual,
+            isDisposable,
+            riskScore: data.virtualCheck.risk_score || data.virtualCheck.riskScore || (isVirtual || isDisposable ? 70 : 20),
+            carrier: data.virtualCheck.carrier || "Unknown",
+            lineType: data.virtualCheck.line_type || data.virtualCheck.lineType || "Unknown",
+            country: data.virtualCheck.country || "Unknown",
+            warnings,
+            lastSeen: data.virtualCheck.last_seen || data.virtualCheck.lastSeen || null,
           })
         }
       } else {
@@ -373,8 +332,8 @@ export function SearchSection() {
                   {skipTraceResults && (
                     <SkipTraceResults
                       data={{
-                        skipTrace: skipTraceResults.skipTrace ?? null,
-                        socialMedia: skipTraceResults.socialMedia ?? null,
+                        skipTrace: (skipTraceResults.skipTrace as SkipTraceData | null) || null,
+                        socialMedia: (skipTraceResults.socialMedia as SocialMediaData) || {},
                         email: emailQuery,
                         searchedAt: skipTraceResults.searchedAt || new Date().toISOString(),
                       }}
@@ -423,35 +382,17 @@ export function SearchSection() {
                       Enter phone in international format with country code. US numbers: +1 followed by 10 digits.
                     </p>
                   </div>
-                  {phoneValidationResult && (
-                    <PhoneValidationResult
-                      data={{
-                        phoneNumber: phoneValidationResult.phone,
-                        isValid: !phoneValidationResult.isVirtual && !phoneValidationResult.isDisposable,
-                        isVirtual: phoneValidationResult.isVirtual,
-                        isDisposable: phoneValidationResult.isDisposable,
-                        riskScore: phoneValidationResult.riskScore || 0,
-                        carrier: phoneValidationResult.carrier || "Unknown",
-                        lineType: phoneValidationResult.lineType || "Unknown",
-                        country: phoneValidationResult.country || "Unknown",
-                        warnings: [
-                          ...(phoneValidationResult.isVirtual ? ["Virtual number detected"] : []),
-                          ...(phoneValidationResult.isDisposable ? ["Disposable number detected"] : []),
-                        ],
-                        lastSeen: null,
-                      }}
-                    />
-                  )}
-                  {phoneSearchResults?.skipTraceData && (
+                  {phoneValidationResult && <PhoneValidationResult data={phoneValidationResult} />}
+                  {phoneSearchResults?.skipTraceData ? (
                     <SkipTraceResults
                       data={{
-                        skipTrace: phoneSearchResults.skipTraceData ?? null,
-                        socialMedia: null,
+                        skipTrace: (phoneSearchResults.skipTraceData as SkipTraceData) || null,
+                        socialMedia: {},
                         email: "",
                         searchedAt: phoneSearchResults.searchPerformed || new Date().toISOString(),
                       }}
                     />
-                  )}
+                  ) : null}
                 </TabsContent>
 
                 {/* Name Search Tab - Updated to show skip trace results */}
@@ -513,12 +454,14 @@ export function SearchSection() {
                       {nameSearchResults.skipTraceData ? (
                         <SkipTraceResults
                           data={{
-                            skipTrace: (nameSearchResults.skipTraceData as SkipTraceData) ?? null,
+                            skipTrace: (nameSearchResults.skipTraceData as SkipTraceData) || null,
                             socialMedia:
-                              nameSearchResults.socialData?.platforms?.reduce((acc: Record<string, SocialMediaValueType>, p: SocialPlatform) => {
-                                acc[p.platform] = { registered: true, url: p.url ?? undefined, username: p.username ?? undefined }
+                              nameSearchResults.socialData?.platforms?.reduce((acc: Record<string, { registered: boolean; url?: string; username?: string }>, p: { platform?: string; url?: string; username?: string }) => {
+                                if (p.platform) {
+                                  acc[p.platform] = { registered: true, url: p.url, username: p.username }
+                                }
                                 return acc
-                              }, {}) || null,
+                              }, {}) || {},
                             email: nameSearchResults.possibleEmails?.[0] || "",
                             searchedAt: nameSearchResults.searchPerformed || new Date().toISOString(),
                           }}
@@ -538,12 +481,12 @@ export function SearchSection() {
                               <div className="space-y-4">
                                 <h4 className="font-semibold text-sm">Social Media Found:</h4>
                                 <div className="grid gap-2 sm:grid-cols-2">
-                                  {nameSearchResults.socialData.platforms.map((platform: SocialPlatform, index: number) => (
+                                  {nameSearchResults.socialData.platforms.map((platform: { platform?: string; url?: string; username?: string }, index: number) => (
                                     <div
                                       key={index}
                                       className="flex items-center justify-between rounded-lg border bg-green-50 dark:bg-green-950/30 px-4 py-3"
                                     >
-                                      <span className="font-medium text-sm capitalize">{platform.platform}</span>
+                                      <span className="font-medium text-sm capitalize">{platform.platform || ""}</span>
                                       {platform.url && (
                                         <a
                                           href={platform.url}
@@ -700,7 +643,7 @@ export function SearchSection() {
                       <CardContent>
                         {monitoringData.services ? (
                           <div className="space-y-4">
-                            {monitoringData.services.map((service: MonitoringService, index: number) => (
+                            {monitoringData.services.map((service: { name?: string; description?: string; contact?: string }, index: number) => (
                               <div key={index} className="p-4 border rounded-lg">
                                 <p className="font-semibold">{service.name}</p>
                                 <p className="text-sm text-muted-foreground">{service.description}</p>

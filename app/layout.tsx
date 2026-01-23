@@ -1,16 +1,14 @@
 import type React from "react"
 import type { Metadata, Viewport } from "next"
-import { Inter, JetBrains_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
+import { Navigation } from "@/components/navigation"
+import { Footer } from "@/components/footer"
 import "./globals.css"
 
-const _inter = Inter({ subsets: ["latin"] })
-const _jetbrainsMono = JetBrains_Mono({ subsets: ["latin"] })
-
 export const metadata: Metadata = {
-  title: "SkipTrace Pro - Professional People Search & Skip Tracing API",
+  title: "MASE Intelligence Skip-Tracer - Professional People Search & Investigation Platform",
   description:
-    "Locate hard-to-find individuals with powerful skip tracing tools. Search across 48+ platforms including TruePeopleSearch, Spokeo, BeenVerified, and more.",
+    "Advanced skip tracing intelligence platform. Locate hard-to-find individuals with AI-powered search across 48+ platforms, batch processing, and comprehensive analytics.",
   generator: "v0.app",
   icons: {
     icon: [
@@ -44,8 +42,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="bg-background">
-      <body className={`font-sans antialiased`}>
-        {children}
+      <body className={`font-sans antialiased flex flex-col min-h-screen`}>
+        <Navigation />
+        <div className="flex-1">{children}</div>
+        <Footer />
         <Analytics />
       </body>
     </html>
