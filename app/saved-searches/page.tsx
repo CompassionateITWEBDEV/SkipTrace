@@ -97,6 +97,7 @@ export default function SavedSearchesPage() {
             <Input
               id="saved-searches-search"
               name="savedSearchesSearch"
+              autoComplete="off"
               placeholder="Search saved items..."
               className="pl-10"
             />

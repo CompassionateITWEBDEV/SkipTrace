@@ -46,6 +46,7 @@ export default function BatchSearchPage() {
               <Textarea
                 id="batch-process-input"
                 name="batchProcessInput"
+                autoComplete="off"
                 placeholder="john.doe@example.com&#10;+1 (555) 123-4567&#10;Jane Smith&#10;123 Main St, Chicago"
                 className="min-h-[300px] font-mono text-sm"
                 value={inputData}

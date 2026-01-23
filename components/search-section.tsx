@@ -305,6 +305,7 @@ export function SearchSection() {
                         id="email-search"
                         name="email"
                         type="email"
+                        autoComplete="email"
                         placeholder="Enter email address..."
                         className="h-12 flex-1"
                         value={emailQuery}
@@ -357,6 +358,7 @@ export function SearchSection() {
                         id="phone-search"
                         name="phone"
                         type="tel"
+                        autoComplete="tel"
                         placeholder="+1 (555) 123-4567 or 5551234567"
                         className="h-12 flex-1 font-mono"
                         value={phoneQuery}
@@ -412,6 +414,7 @@ export function SearchSection() {
                       <Input
                         id="name-first"
                         name="firstName"
+                        autoComplete="given-name"
                         placeholder="First Name"
                         className="h-12"
                         value={nameFirst}
@@ -420,6 +423,7 @@ export function SearchSection() {
                       <Input
                         id="name-last"
                         name="lastName"
+                        autoComplete="family-name"
                         placeholder="Last Name"
                         className="h-12"
                         value={nameLast}
@@ -428,6 +432,7 @@ export function SearchSection() {
                       <Input
                         id="name-city"
                         name="city"
+                        autoComplete="address-level2"
                         placeholder="City (optional)..."
                         className="h-12"
                         value={nameCity}
@@ -436,6 +441,7 @@ export function SearchSection() {
                       <Input
                         id="name-state"
                         name="state"
+                        autoComplete="address-level1"
                         placeholder="State (optional)..."
                         className="h-12"
                         value={nameState}
@@ -550,6 +556,7 @@ export function SearchSection() {
                       <Input
                         id="address-search"
                         name="address"
+                        autoComplete="street-address"
                         placeholder="Enter full address (123 Main St, City, State, ZIP)..."
                         className="h-12 flex-1"
                         value={addressQuery}

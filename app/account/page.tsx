@@ -85,6 +85,7 @@ export default function AccountPage() {
                           id={`api-key-${apiKey.id}`}
                           name={`apiKey-${apiKey.id}`}
                           type={showKey ? "text" : "password"}
+                          autoComplete="off"
                           value={apiKey.key}
                           readOnly
                           className="font-mono text-sm"
@@ -165,20 +166,20 @@ export default function AccountPage() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
                     <Label htmlFor="firstName">First Name</Label>
-                    <Input id="firstName" defaultValue="John" />
+                    <Input id="firstName" name="firstName" autoComplete="given-name" defaultValue="John" />
                   </div>
                   <div>
                     <Label htmlFor="lastName">Last Name</Label>
-                    <Input id="lastName" defaultValue="Doe" />
+                    <Input id="lastName" name="lastName" autoComplete="family-name" defaultValue="Doe" />
                   </div>
                 </div>
                 <div>
                   <Label htmlFor="email">Email</Label>
-                  <Input id="email" type="email" defaultValue="john.doe@example.com" />
+                  <Input id="email" name="email" type="email" autoComplete="email" defaultValue="john.doe@example.com" />
                 </div>
                 <div>
                   <Label htmlFor="company">Company</Label>
-                  <Input id="company" defaultValue="ACME Investigations" />
+                  <Input id="company" name="company" autoComplete="organization" defaultValue="ACME Investigations" />
                 </div>
                 <Button>Save Changes</Button>
               </CardContent>
@@ -249,6 +250,7 @@ export default function AccountPage() {
                           id={`notification-${setting.label.toLowerCase().replace(/\s+/g, "-")}`}
                           name={`notification-${setting.label.toLowerCase().replace(/\s+/g, "-")}`}
                           type="checkbox"
+                          autoComplete="off"
                           className="h-4 w-4"
                           defaultChecked
                         />

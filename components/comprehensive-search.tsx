@@ -70,6 +70,7 @@ export function ComprehensiveSearch() {
                 id="email"
                 name="email"
                 type="email"
+                autoComplete="email"
                 placeholder="example@email.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -82,6 +83,7 @@ export function ComprehensiveSearch() {
                 id="phone"
                 name="phone"
                 type="tel"
+                autoComplete="tel"
                 placeholder="+1 234 567 8900"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
@@ -106,6 +108,7 @@ export function ComprehensiveSearch() {
                 id="address"
                 name="address"
                 type="text"
+                autoComplete="street-address"
                 placeholder="123 Main St, City, ST"
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
