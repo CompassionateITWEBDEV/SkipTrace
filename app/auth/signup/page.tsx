@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Loader2, AlertCircle } from "lucide-react"
 import Link from "next/link"
 
@@ -18,6 +19,7 @@ export default function SignUpPage() {
   const [confirmPassword, setConfirmPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [termsAccepted, setTermsAccepted] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -30,6 +32,11 @@ export default function SignUpPage() {
 
     if (password.length < 8) {
       setError("Password must be at least 8 characters")
+      return
+    }
+
+    if (!termsAccepted) {
+      setError("You must agree to use this service only for lawful purposes and where you have permissible purpose")
       return
     }
 
@@ -125,7 +132,25 @@ export default function SignUpPage() {
               />
             </div>
 
-            <Button type="submit" className="w-full" disabled={loading}>
+            <div className="flex items-start space-x-2">
+              <Checkbox
+                id="terms"
+                checked={termsAccepted}
+                onCheckedChange={(checked) => setTermsAccepted(checked as boolean)}
+                disabled={loading}
+              />
+              <label
+                htmlFor="terms"
+                className="text-xs text-muted-foreground leading-tight cursor-pointer"
+              >
+                I agree to use this service only for lawful purposes and where I have permissible purpose under applicable laws (e.g., FCRA, GLBA).{" "}
+                <Link href="/api-docs" className="text-primary hover:underline">
+                  Terms &amp; API use
+                </Link>
+              </label>
+            </div>
+
+            <Button type="submit" className="w-full" disabled={loading || !termsAccepted}>
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

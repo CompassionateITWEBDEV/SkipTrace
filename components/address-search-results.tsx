@@ -1,9 +1,10 @@
 "use client"
 
+import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { MapPin, User, Phone, Mail, Building, Home, Calendar, DollarSign, Search, Ruler, Bed, Bath } from "lucide-react"
+import { MapPin, User, Phone, Mail, Building, Home, Calendar, DollarSign, Search, Ruler, Bed, Bath, ArrowLeft, CheckCircle2 } from "lucide-react"
 import Link from "next/link"
 
 interface Resident {
@@ -44,8 +45,10 @@ interface AddressSearchResultsProps {
 
 export function AddressSearchResults({ data }: AddressSearchResultsProps) {
   const { query, residents, propertyInfo, instructions } = data
+  const [selectedResident, setSelectedResident] = useState<Resident | null>(null)
   const hasResidents = residents && residents.length > 0
   const hasPropertyInfo = propertyInfo && (propertyInfo.owner || propertyInfo.estimatedValue || propertyInfo.lastSaleDate)
+  const multipleResidents = hasResidents && residents!.length > 1
 
   // Helper to create search links
   const createSearchLink = (type: "name" | "email" | "phone", value: string) => {
@@ -201,59 +204,160 @@ export function AddressSearchResults({ data }: AddressSearchResultsProps) {
                 <User className="h-4 w-4 text-primary" />
                 Associated Residents ({residents.length})
               </h3>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {residents.map((resident, index) => (
-                  <Card key={index} className="border">
-                    <CardContent className="p-4 space-y-3">
-                      {resident.name && (
+              {multipleResidents && selectedResident ? (
+                <div className="space-y-4">
+                  <Card className="border-2 border-primary/30">
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <CardTitle className="text-base flex items-center gap-2">
+                          <CheckCircle2 className="h-4 w-4 text-primary" />
+                          Selected: {selectedResident.name || "Resident"}
+                        </CardTitle>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSelectedResident(null)}
+                        >
+                          <ArrowLeft className="h-4 w-4 mr-1" />
+                          View All Residents
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pt-0 space-y-4">
+                      {selectedResident.name && (
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <User className="h-4 w-4 text-primary" />
-                            <p className="font-medium text-sm">{resident.name}</p>
+                            <p className="font-medium">{selectedResident.name}</p>
                           </div>
-                          <Link href={createSearchLink("name", resident.name)}>
-                            <Button size="sm" variant="ghost" className="h-7 px-2">
+                          <Link href={createSearchLink("name", selectedResident.name)}>
+                            <Button size="sm" variant="outline" className="h-8">
                               <Search className="h-3 w-3 mr-1" />
-                              Search
+                              Search this person
                             </Button>
                           </Link>
                         </div>
                       )}
-                      {resident.phone && (
+                      {selectedResident.phone && (
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <Phone className="h-4 w-4 text-green-600" />
-                            <span className="text-sm font-mono">{resident.phone}</span>
+                            <span className="font-mono">{selectedResident.phone}</span>
                           </div>
-                          <Link href={createSearchLink("phone", resident.phone)}>
-                            <Button size="sm" variant="ghost" className="h-7 px-2">
+                          <Link href={createSearchLink("phone", selectedResident.phone)}>
+                            <Button size="sm" variant="outline" className="h-8">
                               <Search className="h-3 w-3 mr-1" />
                               Search
                             </Button>
                           </Link>
                         </div>
                       )}
-                      {resident.email && (
+                      {selectedResident.email && (
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <Mail className="h-4 w-4 text-orange-600" />
-                            <span className="text-sm font-mono">{resident.email}</span>
+                            <span className="font-mono">{selectedResident.email}</span>
                           </div>
-                          <Link href={createSearchLink("email", resident.email)}>
-                            <Button size="sm" variant="ghost" className="h-7 px-2">
+                          <Link href={createSearchLink("email", selectedResident.email)}>
+                            <Button size="sm" variant="outline" className="h-8">
                               <Search className="h-3 w-3 mr-1" />
                               Search
                             </Button>
                           </Link>
                         </div>
                       )}
-                      {resident.age && (
-                        <p className="text-xs text-muted-foreground">Age: {resident.age}</p>
+                      {selectedResident.age && (
+                        <p className="text-sm text-muted-foreground">Age: {selectedResident.age}</p>
                       )}
                     </CardContent>
                   </Card>
-                ))}
-              </div>
+                </div>
+              ) : multipleResidents ? (
+                <>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    We found {residents.length} residents at this address. Please select one to view details:
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {residents.map((resident, index) => (
+                      <Card
+                        key={index}
+                        className="border cursor-pointer hover:border-primary transition-colors"
+                        onClick={() => setSelectedResident(resident)}
+                      >
+                        <CardContent className="p-4 flex items-center justify-between">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <User className="h-4 w-4 text-primary shrink-0" />
+                            <span className="font-medium text-sm truncate">
+                              {resident.name || resident.email || resident.phone || `Resident ${index + 1}`}
+                            </span>
+                            {resident.age && (
+                              <span className="text-xs text-muted-foreground">(~{resident.age})</span>
+                            )}
+                          </div>
+                          <Button variant="outline" size="sm" className="shrink-0" onClick={(e) => { e.stopPropagation(); setSelectedResident(resident) }}>
+                            <CheckCircle2 className="h-4 w-4 mr-1" />
+                            Select
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {residents.map((resident, index) => (
+                    <Card key={index} className="border">
+                      <CardContent className="p-4 space-y-3">
+                        {resident.name && (
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <User className="h-4 w-4 text-primary" />
+                              <p className="font-medium text-sm">{resident.name}</p>
+                            </div>
+                            <Link href={createSearchLink("name", resident.name)}>
+                              <Button size="sm" variant="ghost" className="h-7 px-2">
+                                <Search className="h-3 w-3 mr-1" />
+                                Search
+                              </Button>
+                            </Link>
+                          </div>
+                        )}
+                        {resident.phone && (
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Phone className="h-4 w-4 text-green-600" />
+                              <span className="text-sm font-mono">{resident.phone}</span>
+                            </div>
+                            <Link href={createSearchLink("phone", resident.phone)}>
+                              <Button size="sm" variant="ghost" className="h-7 px-2">
+                                <Search className="h-3 w-3 mr-1" />
+                                Search
+                              </Button>
+                            </Link>
+                          </div>
+                        )}
+                        {resident.email && (
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Mail className="h-4 w-4 text-orange-600" />
+                              <span className="text-sm font-mono">{resident.email}</span>
+                            </div>
+                            <Link href={createSearchLink("email", resident.email)}>
+                              <Button size="sm" variant="ghost" className="h-7 px-2">
+                                <Search className="h-3 w-3 mr-1" />
+                                Search
+                              </Button>
+                            </Link>
+                          </div>
+                        )}
+                        {resident.age && (
+                          <p className="text-xs text-muted-foreground">Age: {resident.age}</p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

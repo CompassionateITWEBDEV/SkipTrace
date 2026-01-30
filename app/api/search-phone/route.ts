@@ -3,6 +3,7 @@ import { cache } from "@/lib/cache"
 import { createErrorResponse, ValidationError } from "@/lib/error-handler"
 import { getCurrentUser } from "@/lib/auth"
 import { logSearch, countResults } from "@/lib/search-logger"
+import { searchByPhone } from "@/lib/skip-trace-client"
 
 export async function POST(request: Request) {
   const startTime = Date.now()
@@ -54,6 +55,9 @@ export async function POST(request: Request) {
     if (!apiKey) {
       return NextResponse.json({ error: "API key not configured" }, { status: 500 })
     }
+
+    // Format phone for skip-trace API (phoneno): accept (214)349-3972 style or cleaned
+    const phonenoForSkipTrace = phone.trim()
 
     // Call virtual phone detector and geolocation services in parallel
     let virtualCheckData = null
@@ -115,27 +119,19 @@ export async function POST(request: Request) {
       }
     }
 
-    // Try skip trace API (optional - may not be subscribed)
+    // Try skip trace API via shared client (phoneno + page)
     try {
-      const skipTraceResponse = await fetch(
-        `https://skip-tracing-working-api.p.rapidapi.com/search/byphone?phone=${encodeURIComponent(cleanedPhone)}`,
-        {
-          method: "GET",
-          headers: {
-            "x-rapidapi-host": "skip-tracing-working-api.p.rapidapi.com",
-            "x-rapidapi-key": apiKey,
-          },
-          signal: AbortSignal.timeout(30000), // 30 second timeout
-        },
-      )
-
-      if (skipTraceResponse.ok) {
-        skipTraceData = await skipTraceResponse.json()
-      } else if (skipTraceResponse.status === 403) {
-        apiWarning = "Phone skip tracing requires additional API subscription. Showing virtual phone detection results."
-      }
+      skipTraceData = await searchByPhone(phonenoForSkipTrace, "1")
     } catch (error) {
-      console.error("Skip trace phone API error:", error)
+      if (error && typeof error === "object" && "response" in error) {
+        const axErr = error as { response?: { status?: number } }
+        if (axErr.response?.status === 403) {
+          apiWarning = "Phone skip tracing requires additional API subscription. Showing virtual phone detection results."
+        }
+      }
+      if (!skipTraceData) {
+        console.error("Skip trace phone API error:", error)
+      }
     }
 
     // Merge geolocation data into virtualCheck if available

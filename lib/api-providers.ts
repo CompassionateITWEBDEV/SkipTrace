@@ -1,7 +1,17 @@
 // API provider abstraction for multiple skip trace data sources
-// Supports primary and fallback providers with automatic failover
+// Supports primary and fallback providers with automatic failover and circuit breaker
 
-import { getConfig } from "./config"
+import { circuitBreaker } from "./circuit-breaker"
+import {
+  searchByEmail as clientSearchByEmail,
+  searchByPhone as clientSearchByPhone,
+  searchByName as clientSearchByName,
+  searchByAddress as clientSearchByAddress,
+  searchByNameAddress as clientSearchByNameAddress,
+  getPersonDetails as clientGetPersonDetails,
+  buildCityStateZip,
+  healthCheck as clientHealthCheck,
+} from "./skip-trace-client"
 
 export interface ApiProvider {
   name: string
@@ -10,6 +20,8 @@ export interface ApiProvider {
   searchByPhone(phone: string): Promise<unknown>
   searchByName(firstName: string, lastName: string, city?: string, state?: string): Promise<unknown>
   searchByAddress(street: string, city?: string, state?: string, zip?: string): Promise<unknown>
+  searchByNameAddress?(name: string, citystatezip: string, page?: string): Promise<unknown>
+  getPersonDetails?(peoId: string): Promise<unknown>
   checkHealth?(): Promise<boolean> // Optional health check
 }
 
@@ -28,81 +40,22 @@ class RapidApiProvider implements ApiProvider {
   name = "RapidAPI"
   priority = 1 // Primary provider
 
-  private getHeaders() {
-    const config = getConfig()
-    return {
-      "x-rapidapi-key": config.rapidApiKey,
-    }
-  }
-
   async searchByEmail(email: string): Promise<unknown> {
-    const headers = this.getHeaders()
-    const response = await fetch(
-      `https://skip-tracing-working-api.p.rapidapi.com/search/byemail?email=${encodeURIComponent(email)}&phone=1`,
-      {
-        headers: {
-          ...headers,
-          "x-rapidapi-host": "skip-tracing-working-api.p.rapidapi.com",
-        },
-      },
-    )
-
-    if (!response.ok) {
-      throw new Error(`RapidAPI email search failed: ${response.status}`)
-    }
-
-    return response.json()
+    return clientSearchByEmail(email)
   }
 
   async searchByPhone(phone: string): Promise<unknown> {
-    const headers = this.getHeaders()
-    const response = await fetch(
-      `https://skip-tracing-working-api.p.rapidapi.com/search/byphone?phone=${encodeURIComponent(phone)}`,
-      {
-        headers: {
-          ...headers,
-          "x-rapidapi-host": "skip-tracing-working-api.p.rapidapi.com",
-        },
-      },
-    )
-
-    if (!response.ok) {
-      throw new Error(`RapidAPI phone search failed: ${response.status}`)
-    }
-
-    return response.json()
+    return clientSearchByPhone(phone)
   }
 
   async searchByName(
     firstName: string,
     lastName: string,
-    city?: string,
-    state?: string,
+    _city?: string,
+    _state?: string,
   ): Promise<unknown> {
-    const headers = this.getHeaders()
-    const params = new URLSearchParams({
-      first_name: firstName,
-      last_name: lastName,
-      phone: "1",
-    })
-    if (city) params.append("city", city)
-    if (state) params.append("state", state)
-
-    const response = await fetch(
-      `https://skip-tracing-working-api.p.rapidapi.com/search/byname?${params.toString()}`,
-      {
-        headers: {
-          ...headers,
-          "x-rapidapi-host": "skip-tracing-working-api.p.rapidapi.com",
-        },
-      },
-    )
-
-    if (!response.ok) {
-      throw new Error(`RapidAPI name search failed: ${response.status}`)
-    }
-
-    return response.json()
+    const name = [firstName, lastName].filter(Boolean).join(" ").trim()
+    return clientSearchByName(name)
   }
 
   async searchByAddress(
@@ -111,49 +64,24 @@ class RapidApiProvider implements ApiProvider {
     state?: string,
     zip?: string,
   ): Promise<unknown> {
-    const headers = this.getHeaders()
-    const params = new URLSearchParams({
-      street,
-      phone: "1",
-    })
-    if (city) params.append("city", city)
-    if (state) params.append("state", state)
-    if (zip) params.append("zip", zip)
+    const citystatezip = buildCityStateZip(city, state, zip)
+    return clientSearchByAddress(street, citystatezip || "")
+  }
 
-    const response = await fetch(
-      `https://skip-tracing-working-api.p.rapidapi.com/search/byaddress?${params.toString()}`,
-      {
-        headers: {
-          ...headers,
-          "x-rapidapi-host": "skip-tracing-working-api.p.rapidapi.com",
-        },
-      },
-    )
+  async searchByNameAddress(
+    name: string,
+    citystatezip: string,
+    page = "1",
+  ): Promise<unknown> {
+    return clientSearchByNameAddress(name, citystatezip, page)
+  }
 
-    if (!response.ok) {
-      throw new Error(`RapidAPI address search failed: ${response.status}`)
-    }
-
-    return response.json()
+  async getPersonDetails(peoId: string): Promise<unknown> {
+    return clientGetPersonDetails(peoId)
   }
 
   async checkHealth(): Promise<boolean> {
-    try {
-      // Simple health check - try a lightweight endpoint or ping
-      const response = await fetch("https://skip-tracing-working-api.p.rapidapi.com/health", {
-        method: "GET",
-        headers: {
-          ...this.getHeaders(),
-          "x-rapidapi-host": "skip-tracing-working-api.p.rapidapi.com",
-        },
-        signal: AbortSignal.timeout(5000),
-      })
-      return response.ok
-    } catch {
-      // If health endpoint doesn't exist, try a minimal search as health check
-      // For now, assume healthy if we can reach the API
-      return true
-    }
+    return clientHealthCheck()
   }
 }
 
@@ -178,6 +106,14 @@ class AlternativeProvider implements ApiProvider {
   }
 
   async searchByAddress(_street: string, _city?: string, _state?: string, _zip?: string): Promise<unknown> {
+    throw new Error("Alternative provider not yet implemented")
+  }
+
+  async searchByNameAddress(_name: string, _citystatezip: string, _page?: string): Promise<unknown> {
+    throw new Error("Alternative provider not yet implemented")
+  }
+
+  async getPersonDetails(_peoId: string): Promise<unknown> {
     throw new Error("Alternative provider not yet implemented")
   }
 
@@ -250,44 +186,48 @@ export function getProviderHealth(providerName?: string): ProviderHealth | Map<s
 }
 
 /**
- * Search with automatic failover between providers
- * Tries providers in priority order, skipping unhealthy ones
+ * Search with automatic failover between providers and circuit breaker protection.
+ * Primary provider is called through the circuit breaker; on open circuit or failure,
+ * fallback providers are tried in priority order.
  */
 export async function searchWithFailover<T>(
   searchFn: (provider: ApiProvider) => Promise<T>,
   options: { timeout?: number; skipUnhealthy?: boolean } = {},
 ): Promise<{ data: T; provider: string }> {
-  const timeout = options.timeout || 10000 // 10 second default timeout
+  const _timeout = options.timeout || 10000 // 10 second default timeout (reserved for future per-call timeout)
   const skipUnhealthy = options.skipUnhealthy !== false // Default to true
 
   // Sort providers by priority
   const sortedProviders = [...providers].sort((a, b) => a.priority - b.priority)
 
   for (const provider of sortedProviders) {
+    // Skip if circuit breaker is open for this provider (use fallback instead)
+    if (circuitBreaker.isOpen(provider.name)) {
+      console.warn(`Circuit breaker open for ${provider.name}, trying next provider`)
+      continue
+    }
+
     // Skip unhealthy providers if option is enabled
     if (skipUnhealthy) {
       const health = providerHealth.get(provider.name)
       if (health && !health.healthy) {
-        // Check if health check is stale (older than 5 minutes)
         const healthAge = Date.now() - health.lastChecked.getTime()
         if (healthAge < 5 * 60 * 1000) {
           console.warn(`Skipping unhealthy provider: ${provider.name}`)
           continue
         }
-        // Health check is stale, re-check
       }
     }
 
     try {
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), timeout)
-
       const startTime = Date.now()
-      const data = await searchFn(provider)
+      const data = await circuitBreaker.execute(
+        provider.name,
+        () => searchFn(provider),
+        undefined, // No inline fallback; we try next provider in loop
+      )
       const responseTime = Date.now() - startTime
-      clearTimeout(timeoutId)
 
-      // Mark provider as healthy
       providerHealth.set(provider.name, {
         provider: provider.name,
         healthy: true,
@@ -301,7 +241,6 @@ export async function searchWithFailover<T>(
       const errorMsg = error instanceof Error ? error.message : "Unknown error"
       console.warn(`Provider ${provider.name} failed:`, errorMsg)
 
-      // Mark provider as unhealthy
       providerHealth.set(provider.name, {
         provider: provider.name,
         healthy: false,
@@ -310,7 +249,7 @@ export async function searchWithFailover<T>(
         error: errorMsg,
       })
 
-      // Try next provider
+      // Circuit breaker already recorded failure in execute(); try next provider
       continue
     }
   }

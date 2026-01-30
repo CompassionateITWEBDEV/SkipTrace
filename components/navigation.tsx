@@ -13,6 +13,7 @@ import {
   X,
   BarChart3,
   Layers,
+  MapPin,
   User,
   LogOut,
 } from "lucide-react"
@@ -35,6 +36,7 @@ export function Navigation() {
     { href: "/", label: "Home" },
     { href: "/search", label: "Search", icon: Search },
     { href: "/batch-search", label: "Batch", icon: Layers },
+    { href: "/batch-address", label: "Batch Address", icon: MapPin },
     { href: "/reports", label: "Reports", icon: FileText },
     { href: "/analytics", label: "Analytics", icon: BarChart3 },
     { href: "/pricing", label: "Pricing", icon: DollarSign },

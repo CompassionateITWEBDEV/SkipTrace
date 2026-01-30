@@ -1,0 +1,16 @@
+Inputs,,Run SCRIPT,Outputs,,
+street,citystatezip,"Do not add 
+more than 2 address
+ on the free plan",Inputs,Name,ids
+522 VICTORY ST,"KNOXVILLE,TN,37919",,,,
+3828 Double Oak Ln,"Irving, TX 75061",,,,
+,,,,,
+,,,,,
+,,,,,
+,,,,,
+,,,,,
+,,Instructions:,,,
+,,"Google Sheet Scraping is not recommended
+for large scale scraping. 
+Use the python code attached 
+on api page tutorial.",,,

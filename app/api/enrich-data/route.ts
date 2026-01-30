@@ -7,6 +7,12 @@ import { getConfig } from "@/lib/config"
 import { correlatePersonData } from "@/lib/data-correlation"
 import { createErrorResponse, ValidationError } from "@/lib/error-handler"
 import { cache } from "@/lib/cache"
+import {
+  searchByEmail,
+  searchByName,
+  searchByAddress,
+  buildCityStateZip,
+} from "@/lib/skip-trace-client"
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
@@ -60,32 +66,36 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "API key not configured" }, { status: 500 })
     }
 
-    // Run multiple enrichment APIs in parallel
-    const enrichmentPromises: Promise<ApiResponse | null>[] = []
+    // Run multiple enrichment APIs in parallel (keyed so we can map results)
+    type EnrichmentKey =
+      | "emailSkipTrace"
+      | "emailSocial"
+      | "phoneValidation"
+      | "nameSearch"
+      | "addressSearch"
+    const enrichmentTasks: { key: EnrichmentKey; promise: Promise<ApiResponse | null> }[] = []
 
-    // Email enrichment
+    // Email enrichment (client: email, phone=1, page)
     if (email) {
-      enrichmentPromises.push(
-        fetch(`https://skip-tracing-working-api.p.rapidapi.com/search/byemail?email=${encodeURIComponent(email)}&phone=1`, {
-          headers: {
-            "x-rapidapi-host": "skip-tracing-working-api.p.rapidapi.com",
-            "x-rapidapi-key": apiKey,
+      enrichmentTasks.push({
+        key: "emailSkipTrace",
+        promise: searchByEmail(email, "1").catch(() => null),
+      })
+      enrichmentTasks.push({
+        key: "emailSocial",
+        promise: fetch(
+          `https://email-social-media-checker.p.rapidapi.com/check_email?email=${encodeURIComponent(email)}`,
+          {
+            headers: {
+              "x-rapidapi-host": "email-social-media-checker.p.rapidapi.com",
+              "x-rapidapi-key": apiKey,
+            },
+            signal: AbortSignal.timeout(30000),
           },
-        })
+        )
           .then((r) => (r.ok ? r.json() : null))
           .catch(() => null),
-      )
-
-      enrichmentPromises.push(
-        fetch(`https://email-social-media-checker.p.rapidapi.com/check_email?email=${encodeURIComponent(email)}`, {
-          headers: {
-            "x-rapidapi-host": "email-social-media-checker.p.rapidapi.com",
-            "x-rapidapi-key": apiKey,
-          },
-        })
-          .then((r) => (r.ok ? r.json() : null))
-          .catch(() => null),
-      )
+      })
     }
 
     // Phone enrichment
@@ -93,8 +103,9 @@ export async function POST(request: NextRequest) {
       const cleanedPhone = phone.replace(/\D/g, "")
       const formattedPhone = cleanedPhone.startsWith("+") ? cleanedPhone : `+${cleanedPhone}`
 
-      enrichmentPromises.push(
-        fetch("https://virtual-phone-numbers-detector.p.rapidapi.com/check-number", {
+      enrichmentTasks.push({
+        key: "phoneValidation",
+        promise: fetch("https://virtual-phone-numbers-detector.p.rapidapi.com/check-number", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -102,37 +113,51 @@ export async function POST(request: NextRequest) {
             "x-rapidapi-key": apiKey,
           },
           body: JSON.stringify({ phone: formattedPhone }),
+          signal: AbortSignal.timeout(30000),
         })
           .then((r) => (r.ok ? r.json() : null))
           .catch(() => null),
+      })
+    }
+
+    // Name enrichment (client: name full string, page)
+    if (name && name.trim()) {
+      enrichmentTasks.push({
+        key: "nameSearch",
+        promise: searchByName(name.trim(), "1").catch(() => null),
+      })
+    }
+
+    // Address enrichment: client byaddress (street, citystatezip, page)
+    const addressParams = parseAddressForEnrichment(address)
+    if (addressParams) {
+      const citystatezip = buildCityStateZip(
+        addressParams.city,
+        addressParams.state,
+        addressParams.zip,
       )
+      enrichmentTasks.push({
+        key: "addressSearch",
+        promise: searchByAddress(
+          addressParams.street,
+          citystatezip || addressParams.street,
+          "1",
+        ).catch(() => null),
+      })
     }
 
-    // Name enrichment
-    if (name) {
-      const [firstName, ...lastNameParts] = name.split(" ")
-      const lastName = lastNameParts.join(" ")
-
-      if (firstName && lastName) {
-        const params = new URLSearchParams({
-          firstName,
-          lastName,
-        })
-
-        enrichmentPromises.push(
-          fetch(`https://skip-tracing-working-api.p.rapidapi.com/search/byname?${params.toString()}`, {
-            headers: {
-              "x-rapidapi-host": "skip-tracing-working-api.p.rapidapi.com",
-              "x-rapidapi-key": apiKey,
-            },
-          })
-            .then((r) => (r.ok ? r.json() : null))
-            .catch(() => null),
-        )
-      }
+    const resultValues = await Promise.all(enrichmentTasks.map((t) => t.promise))
+    const resultsByKey: Record<EnrichmentKey, ApiResponse | null> = {
+      emailSkipTrace: null,
+      emailSocial: null,
+      phoneValidation: null,
+      nameSearch: null,
+      addressSearch: null,
     }
-
-    const results = await Promise.all(enrichmentPromises)
+    enrichmentTasks.forEach((t, i) => {
+      resultsByKey[t.key] = resultValues[i]
+    })
+    const results = resultValues
 
     // Use data correlation engine for better merging
     const validResults = results.filter(Boolean)
@@ -159,10 +184,11 @@ export async function POST(request: NextRequest) {
     // Correlate and merge data
     const enrichedData = {
       inputData: { email, phone, name, address },
-      skipTraceData: results[0],
-      socialMediaData: results[1],
-      phoneValidation: results[2],
-      nameSearchData: results[3],
+      skipTraceData: resultsByKey.emailSkipTrace,
+      socialMediaData: resultsByKey.emailSocial,
+      phoneValidation: resultsByKey.phoneValidation,
+      nameSearchData: resultsByKey.nameSearch,
+      addressSearchData: resultsByKey.addressSearch,
       correlatedData: correlated.correlatedData,
       confidenceScore: correlated.confidenceScore,
       dataQuality: correlated.dataQuality,
@@ -208,6 +234,51 @@ export async function POST(request: NextRequest) {
     console.error("Data enrichment failed:", error)
     return createErrorResponse(error, "Failed to enrich data")
   }
+}
+
+/**
+ * Parse address input (string or object) into street, city, state, zip for byaddress API.
+ * Returns null if no usable address.
+ */
+function parseAddressForEnrichment(
+  address: unknown,
+): { street: string; city?: string; state?: string; zip?: string } | null {
+  if (!address) return null
+  if (typeof address === "string") {
+    const trimmed = address.trim()
+    if (!trimmed) return null
+    // Optional: try to parse "123 Main St, City, ST 12345" into parts
+    const parts = trimmed.split(",").map((p) => p.trim()).filter(Boolean)
+    if (parts.length >= 4) {
+      const [street, city, stateZip] = [parts[0], parts[1], parts.slice(2).join(", ")]
+      const stateZipMatch = stateZip?.match(/^([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)$/)
+      return {
+        street,
+        city: city || undefined,
+        state: stateZipMatch ? stateZipMatch[1] : undefined,
+        zip: stateZipMatch ? stateZipMatch[2] : undefined,
+      }
+    }
+    if (parts.length === 3) {
+      return { street: parts[0], city: parts[1], state: parts[2] }
+    }
+    if (parts.length === 2) {
+      return { street: parts[0], city: parts[1] }
+    }
+    return { street: trimmed }
+  }
+  if (typeof address === "object" && address !== null) {
+    const o = address as Record<string, unknown>
+    const street = typeof o.street === "string" ? o.street.trim() : null
+    if (!street) return null
+    return {
+      street,
+      city: typeof o.city === "string" ? o.city.trim() || undefined : undefined,
+      state: typeof o.state === "string" ? o.state.trim() || undefined : undefined,
+      zip: typeof o.zip === "string" || typeof o.zip === "number" ? String(o.zip).trim() || undefined : undefined,
+    }
+  }
+  return null
 }
 
 function _calculateConfidenceScore(results: (ApiResponse | null)[]): number {

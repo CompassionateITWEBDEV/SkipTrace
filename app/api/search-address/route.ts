@@ -3,6 +3,7 @@ import { cache } from "@/lib/cache"
 import { createErrorResponse, ValidationError, ExternalApiError } from "@/lib/error-handler"
 import { getCurrentUser } from "@/lib/auth"
 import { logSearch, countResults } from "@/lib/search-logger"
+import { searchByAddress, buildCityStateZip } from "@/lib/skip-trace-client"
 
 export async function POST(request: Request) {
   const startTime = Date.now()
@@ -43,13 +44,7 @@ export async function POST(request: Request) {
       return NextResponse.json(cachedResult)
     }
 
-    const params = new URLSearchParams({
-      street: street.trim(),
-      phone: "1",
-    })
-    if (city) params.append("city", city.trim())
-    if (state) params.append("state", state.trim())
-    if (zip) params.append("zip", zip?.toString().trim())
+    const citystatezip = buildCityStateZip(city, state, zip)
 
     const apiKey = process.env.RAPIDAPI_KEY
     if (!apiKey) {
@@ -65,56 +60,61 @@ export async function POST(request: Request) {
     }> = []
 
     try {
-      const skipTraceResponse = await fetch(
-        `https://skip-tracing-working-api.p.rapidapi.com/search/byaddress?${params.toString()}`,
-        {
-          method: "GET",
-          headers: {
-            "x-rapidapi-host": "skip-tracing-working-api.p.rapidapi.com",
-            "x-rapidapi-key": apiKey,
-          },
-          signal: AbortSignal.timeout(30000), // 30 second timeout
-        },
-      ).catch((err) => {
-        throw new ExternalApiError(`Address search API request failed: ${err.message}`, undefined, err)
-      })
+      skipTraceData = await searchByAddress(street.trim(), citystatezip || street.trim(), "1")
+    } catch (err) {
+      throw new ExternalApiError(
+        `Address search API request failed: ${err instanceof Error ? err.message : "Unknown error"}`,
+        undefined,
+        err,
+      )
+    }
 
-      if (skipTraceResponse.ok) {
-        skipTraceData = await skipTraceResponse.json()
+    if (skipTraceData) {
+      // Prefer PeopleDetails (official API shape), then fallback to legacy shapes
+      const peopleArray = Array.isArray(skipTraceData.PeopleDetails)
+        ? skipTraceData.PeopleDetails
+        : skipTraceData.person || (skipTraceData.data as Record<string, unknown>)?.person || skipTraceData
+      const peopleList = Array.isArray(peopleArray) ? peopleArray : [peopleArray]
 
-        // Extract resident information from the API response
-        // The API may return data in different formats, so we check multiple possible structures
-        if (skipTraceData) {
-          // Check if data is nested in a 'data' or 'person' field
-          const personData = skipTraceData.person || skipTraceData.data?.person || skipTraceData
-          
-          // Handle case where API returns an array of people
-          const peopleArray = Array.isArray(personData) ? personData : [personData]
+      peopleList.forEach((person: unknown) => {
+        if (!person || typeof person !== "object") return
 
-          peopleArray.forEach((person: unknown) => {
-            if (!person || typeof person !== "object") return
+        const personObj = person as Record<string, unknown>
 
-            const personObj = person as Record<string, unknown>
+        // PeopleDetails shape: Name, Person ID, Age, Lives in, Link, Related to
+        const officialName = personObj.Name ?? personObj.name
+        if (typeof officialName === "string" && officialName.trim()) {
+          const ageVal = personObj.Age ?? personObj.age ?? personObj.ages
+          const age = typeof ageVal === "number" ? ageVal : typeof ageVal === "string" ? parseInt(ageVal, 10) : undefined
+          const isDuplicate = residents.some((r) => r.name?.toLowerCase() === officialName.trim().toLowerCase())
+          if (!isDuplicate) {
+            residents.push({
+              name: officialName.trim(),
+              ...(age !== undefined && !Number.isNaN(age) && { age }),
+            })
+          }
+          return
+        }
 
-            // Extract names - handle multiple formats
-            const names = personObj.names || personObj.name || []
-            const namesArray = Array.isArray(names) ? names : names ? [names] : []
+        // Legacy: extract names - handle multiple formats
+        const names = personObj.names || personObj.name || []
+        const namesArray = Array.isArray(names) ? names : names ? [names] : []
 
-            // Extract phones
-            const phones = personObj.phones || personObj.phone || []
-            const phonesArray = Array.isArray(phones) ? phones : phones ? [phones] : []
+        // Extract phones
+        const phones = personObj.phones || personObj.phone || []
+        const phonesArray = Array.isArray(phones) ? phones : phones ? [phones] : []
 
-            // Extract emails
-            const emails = personObj.emails || personObj.email || []
-            const emailsArray = Array.isArray(emails) ? emails : emails ? [emails] : []
+        // Extract emails
+        const emails = personObj.emails || personObj.email || []
+        const emailsArray = Array.isArray(emails) ? emails : emails ? [emails] : []
 
-            // Extract age
-            const ageData = personObj.age || personObj.ages
-            const age = typeof ageData === "number" ? ageData : typeof ageData === "string" ? parseInt(ageData) : undefined
+        // Extract age
+        const ageData = personObj.age || personObj.ages
+        const age = typeof ageData === "number" ? ageData : typeof ageData === "string" ? parseInt(ageData, 10) : undefined
 
-            // If we have names, create resident entries for each name
-            if (namesArray.length > 0) {
-              namesArray.forEach((nameEntry: string | { display?: string; full?: string; first?: string; last?: string }, nameIndex: number) => {
+        // If we have names, create resident entries for each name
+        if (namesArray.length > 0) {
+          namesArray.forEach((nameEntry: string | { display?: string; full?: string; first?: string; last?: string }, nameIndex: number) => {
                 const nameStr =
                   typeof nameEntry === "string"
                     ? nameEntry.trim()
@@ -158,9 +158,9 @@ export async function POST(request: Request) {
                     if (age) resident.age = age
                     residents.push(resident)
                   }
-                }
-              })
-            } else if (phonesArray.length > 0 || emailsArray.length > 0) {
+              }
+            })
+        } else if (phonesArray.length > 0 || emailsArray.length > 0) {
               // If no names but we have contact info, create a generic entry
               const phone = phonesArray[0]
                 ? (typeof phonesArray[0] === "string"
@@ -184,14 +184,10 @@ export async function POST(request: Request) {
                 if (phone) resident.phone = phone
                 if (email) resident.email = email
                 if (age) resident.age = age
-                residents.push(resident)
-              }
+              residents.push(resident)
             }
-          })
-        }
-      }
-    } catch (e) {
-      console.error("Skip trace by address failed:", e)
+          }
+        })
     }
 
     // Try to fetch property records from property API if available
@@ -259,7 +255,7 @@ export async function POST(request: Request) {
 
     if (skipTraceData) {
       // Try to extract property information from various possible API response formats
-      const propertyData = skipTraceData.property || skipTraceData.propertyInfo || skipTraceData
+      const propertyData = (skipTraceData.property ?? skipTraceData.propertyInfo ?? skipTraceData) as Record<string, unknown>
 
       // Property type
       if (propertyData?.type || propertyData?.propertyType || propertyData?.property_type) {
@@ -286,12 +282,16 @@ export async function POST(request: Request) {
       }
 
       // Also check if owner info is in person data (first person might be owner)
-      const personData = skipTraceData.person || (skipTraceData.data as Record<string, unknown>)?.person
+      const personData = skipTraceData.PeopleDetails ?? skipTraceData.person ?? (skipTraceData.data as Record<string, unknown>)?.person
       if (!propertyOwner && personData) {
         const peopleArray = Array.isArray(personData) ? personData : [personData]
         if (peopleArray.length > 0) {
           const firstPerson = peopleArray[0] as Record<string, unknown>
-          const names = firstPerson.names || firstPerson.name || []
+          const officialName = firstPerson.Name ?? firstPerson.name
+          if (typeof officialName === "string" && officialName.trim()) {
+            propertyOwner = officialName.trim()
+          }
+          const names = firstPerson.names || firstPerson.name || (typeof officialName === "string" ? [officialName] : [])
           const namesArray = Array.isArray(names) ? names : names ? [names] : []
           if (namesArray.length > 0) {
             const firstName = namesArray[0]
@@ -322,8 +322,9 @@ export async function POST(request: Request) {
       }
 
       // Additional property details
-      if (propertyData?.yearBuilt || propertyData?.year_built) {
-        propertyYearBuilt = propertyData.yearBuilt || propertyData.year_built
+      if (propertyData?.yearBuilt ?? propertyData?.year_built) {
+        const yb = propertyData.yearBuilt ?? propertyData.year_built
+        propertyYearBuilt = typeof yb === "number" ? yb : typeof yb === "string" ? yb : undefined
       }
       if (propertyData?.squareFeet || propertyData?.square_feet || propertyData?.sqft || propertyData?.sqFt) {
         const sqft = propertyData.squareFeet || propertyData.square_feet || propertyData.sqft || propertyData.sqFt

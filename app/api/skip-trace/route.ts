@@ -5,6 +5,7 @@ import { createErrorResponse, ExternalApiError, ValidationError } from "@/lib/er
 import { cache } from "@/lib/cache"
 import { checkEmailBreach, checkEmailReputation } from "@/lib/email-utils"
 import { deduplicateRequest, generateDedupKey } from "@/lib/request-deduplication"
+import { searchWithFailover } from "@/lib/api-providers"
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
@@ -48,57 +49,36 @@ export async function POST(request: NextRequest) {
 
     // Use request deduplication to prevent duplicate API calls
     const dedupKey = generateDedupKey("email-search", { email })
-    
-    // Call APIs in parallel for better performance (skip-trace, social media, breach check)
-    const skipTraceUrl = `https://skip-tracing-working-api.p.rapidapi.com/search/byemail?email=${encodeURIComponent(email)}&phone=1`
+
     const socialUrl = `https://email-social-media-checker.p.rapidapi.com/check_email?email=${encodeURIComponent(email)}`
 
-    const [skipTraceResponse, socialResponse, breachData, emailReputation] = await deduplicateRequest(
+    // Skip-trace via provider layer (circuit breaker + fallback); social, breach, reputation in parallel
+    const [skipTraceResult, socialResponse, breachData, emailReputation] = await deduplicateRequest(
       dedupKey,
-      () => Promise.all([
-        fetch(skipTraceUrl, {
-          method: "GET",
-          headers: {
-            "x-rapidapi-host": "skip-tracing-working-api.p.rapidapi.com",
-            "x-rapidapi-key": apiKey,
-          },
-          signal: AbortSignal.timeout(30000), // 30 second timeout
-        }).catch((err) => {
-          throw new ExternalApiError(`Skip trace API request failed: ${err.message}`, undefined, err)
-        }),
-        fetch(socialUrl, {
-          method: "GET",
-          headers: {
-            "x-rapidapi-host": "email-social-media-checker.p.rapidapi.com",
-            "x-rapidapi-key": apiKey,
-          },
-          signal: AbortSignal.timeout(30000), // 30 second timeout
-        }).catch((err) => {
-          throw new ExternalApiError(`Social media API request failed: ${err.message}`, undefined, err)
-        }),
-        // Email breach check (non-blocking - don't fail if this fails)
-        checkEmailBreach(email).catch(() => ({ breached: false, error: "Breach check unavailable" })),
-        // Email reputation check (non-blocking)
-        checkEmailReputation(email).catch(() => ({ deliverable: true, riskScore: 0.5 })),
-      ]),
+      () =>
+        Promise.all([
+          searchWithFailover((provider) => provider.searchByEmail(email), { timeout: 30000 })
+            .then((r) => r.data)
+            .catch((err) => {
+              console.warn("Skip trace provider(s) failed:", err instanceof Error ? err.message : err)
+              return null
+            }),
+          fetch(socialUrl, {
+            method: "GET",
+            headers: {
+              "x-rapidapi-host": "email-social-media-checker.p.rapidapi.com",
+              "x-rapidapi-key": apiKey,
+            },
+            signal: AbortSignal.timeout(30000),
+          }),
+          checkEmailBreach(email).catch(() => ({ breached: false, error: "Breach check unavailable" })),
+          checkEmailReputation(email).catch(() => ({ deliverable: true, riskScore: 0.5 })),
+        ]),
     )
 
-    // Handle skip trace response
-    let skipTraceData = null
-    if (!skipTraceResponse.ok) {
-      const errorText = await skipTraceResponse.text().catch(() => "Unknown error")
-      console.error(`Skip trace API failed (${skipTraceResponse.status}): ${errorText}`)
-      // Don't throw - continue with social media data if available
-    } else {
-      try {
-        skipTraceData = await skipTraceResponse.json()
-      } catch (err) {
-        console.error("Failed to parse skip trace response:", err)
-      }
-    }
+    const skipTraceData = skipTraceResult
 
-    // Handle social media response
-    let socialData = null
+    let socialData: unknown = null
     if (socialResponse.ok) {
       try {
         socialData = await socialResponse.json()

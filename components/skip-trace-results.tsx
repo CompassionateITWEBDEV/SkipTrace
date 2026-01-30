@@ -89,6 +89,13 @@ export function SkipTraceResults({ data, searchType, query }: SkipTraceResultsPr
 
   return (
     <div className="mt-6 space-y-4">
+      {/* Legal disclaimer for all search results */}
+      <div className="rounded-lg border border-muted bg-muted/30 px-4 py-2 text-xs text-muted-foreground flex items-center gap-2">
+        <AlertTriangle className="h-4 w-4 shrink-0" />
+        <span>
+          For lawful use only. Use of this service requires a permissible purpose under applicable laws (e.g., FCRA, GLBA).
+        </span>
+      </div>
       {/* Main Results Card */}
       <Card className="border-2 border-primary/20">
         <CardHeader className="bg-primary/5">
