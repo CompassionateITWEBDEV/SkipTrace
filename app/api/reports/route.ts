@@ -11,7 +11,15 @@ export const dynamic = "force-dynamic"
  */
 export async function GET(request: Request) {
   try {
-    const user = await requireAuth()
+    let user
+    try {
+      user = await requireAuth()
+    } catch {
+      return NextResponse.json(
+        { error: "Authentication required" },
+        { status: 401 }
+      )
+    }
     const { searchParams } = new URL(request.url)
     const limit = parseInt(searchParams.get("limit") || "50")
     const offset = parseInt(searchParams.get("offset") || "0")
@@ -48,7 +56,8 @@ export async function GET(request: Request) {
     })
   } catch (error) {
     console.error("Error fetching reports:", error)
-    
+    const message = error instanceof Error ? error.message : String(error)
+
     // Enhanced error handling
     if (error && typeof error === "object" && "code" in error) {
       const prismaError = error as { code?: string; message?: string }
@@ -66,19 +75,28 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         error: "Failed to fetch reports",
-        details: process.env.NODE_ENV === "development" && error instanceof Error ? error.message : undefined,
+        details: process.env.NODE_ENV === "development" ? message : undefined,
       },
       { status: 500 }
     )
   }
 }
 
+
 /**
  * Create a new report
  */
 export async function POST(request: Request) {
   try {
-    const user = await requireAuth()
+    let user
+    try {
+      user = await requireAuth()
+    } catch {
+      return NextResponse.json(
+        { error: "Authentication required" },
+        { status: 401 }
+      )
+    }
     const { title, query, results, searchType } = await request.json()
 
     if (!title || !query || !results) {
