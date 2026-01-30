@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "pnpm": {
+    "overrides": {
+      "tar": "^7.0.0"
+    },
     "onlyBuiltDependencies": [
       "@prisma/engines",
       "core-js",

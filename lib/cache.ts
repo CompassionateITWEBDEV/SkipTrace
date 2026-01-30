@@ -120,6 +120,18 @@ class InMemoryCache {
 
 const inMemoryCache = new InMemoryCache()
 
+// Timeout for Redis ops so a hung connection doesn't block requests (e.g. after 1st search)
+const REDIS_OP_TIMEOUT_MS = 5000
+
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: () => T): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("Redis operation timeout")), ms),
+    ),
+  ]).catch(() => fallback())
+}
+
 class DistributedCache {
   // Optimized TTLs based on data freshness requirements
   private defaultTTL: number = 60 * 60 * 1000 // 1 hour default for general data
@@ -128,6 +140,10 @@ class DistributedCache {
   private nameTTL: number = 6 * 60 * 60 * 1000 // 6 hours for name searches (name data changes moderately)
   private addressTTL: number = 24 * 60 * 60 * 1000 // 24 hours for address searches (address data changes infrequently)
   private comprehensiveTTL: number = 60 * 60 * 1000 // 1 hour for comprehensive searches (combined data)
+
+  private isCacheEnabled(): boolean {
+    return process.env.CACHE_ENABLED !== "false"
+  }
 
   /**
    * Generate a cache key from query parameters
@@ -144,20 +160,23 @@ class DistributedCache {
    * Get cached data if it exists and hasn't expired
    */
   async get<T>(key: string): Promise<T | null> {
-    // Try Redis first
+    if (!this.isCacheEnabled()) return null
+
+    // Try Redis first (with timeout so a hung connection doesn't block after first request)
     if (redisAvailable && redisClient) {
       try {
-        const cached = await redisClient.get(key)
+        const cached = await withTimeout(
+          redisClient.get(key),
+          REDIS_OP_TIMEOUT_MS,
+          () => null as string | null,
+        )
         if (cached) {
           const entry: CacheEntry<T> = JSON.parse(cached)
           const now = Date.now()
           if (now - entry.timestamp <= entry.ttl) {
             return entry.data
           } else {
-            // Expired, delete it
-            await redisClient.del(key).catch(() => {
-              // Ignore delete errors
-            })
+            await redisClient.del(key).catch(() => {})
           }
         }
       } catch (error) {
@@ -165,7 +184,6 @@ class DistributedCache {
       }
     }
 
-    // Fallback to in-memory
     return inMemoryCache.get<T>(key)
   }
 
@@ -173,24 +191,28 @@ class DistributedCache {
    * Set data in cache with optional TTL
    */
   async set<T>(key: string, data: T, ttl?: number): Promise<void> {
+    if (!this.isCacheEnabled()) return
+
     const entry: CacheEntry<T> = {
       data,
       timestamp: Date.now(),
       ttl: ttl || this.defaultTTL,
     }
 
-    // Try Redis first
     if (redisAvailable && redisClient) {
       try {
         const ttlSeconds = Math.floor((ttl || this.defaultTTL) / 1000)
-        await redisClient.setex(key, ttlSeconds, JSON.stringify(entry))
-        return
+        const ok = await withTimeout(
+          redisClient.setex(key, ttlSeconds, JSON.stringify(entry)),
+          REDIS_OP_TIMEOUT_MS,
+          () => null as string | null,
+        )
+        if (ok !== null) return
       } catch (error) {
         console.warn("Redis set error, falling back to memory:", error)
       }
     }
 
-    // Fallback to in-memory
     await inMemoryCache.set(key, data, ttl)
   }
 

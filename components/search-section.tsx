@@ -116,7 +116,34 @@ export function SearchSection() {
     }
   }
 
-  const handlePhoneSearch = async (skipCache = false) => {
+  const applyPhoneSearchResult = (
+    data: { skipTraceData?: unknown; virtualCheck?: Record<string, unknown>; searchPerformed?: string; warning?: string | null },
+    cleanedPhone: string,
+  ) => {
+    setPhoneSearchResults(data)
+    const v = data.virtualCheck
+    if (v) {
+      const warnings: string[] = []
+      const isVirtual = !!v.is_virtual || !!v.isVirtual
+      const isDisposable = !!v.is_disposable || !!v.isDisposable
+      if (isVirtual) warnings.push("This is a virtual phone number")
+      if (isDisposable) warnings.push("This is a disposable phone number")
+      setPhoneValidationResult({
+        phoneNumber: cleanedPhone,
+        isValid: !isVirtual && !isDisposable,
+        isVirtual,
+        isDisposable,
+        riskScore: Number(v.risk_score ?? v.riskScore) || (isVirtual || isDisposable ? 70 : 20),
+        carrier: (v.carrier as string) || "Unknown",
+        lineType: ((v.line_type ?? v.lineType) as string) || "Unknown",
+        country: (v.country as string) || "Unknown",
+        warnings,
+        lastSeen: ((v.last_seen ?? v.lastSeen) as string | null) ?? null,
+      })
+    }
+  }
+
+  const handlePhoneSearch = async () => {
     if (!phoneQuery) return
 
     let cleanedPhone = phoneQuery.replace(/[\s\-().]/g, "")
@@ -140,46 +167,35 @@ export function SearchSection() {
     setErrorMessage("")
 
     try {
-      const response = await fetch("/api/search-phone", {
+      // First attempt (may use cache)
+      let response = await fetch("/api/search-phone", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: cleanedPhone, ...(skipCache && { skipCache: true }) }),
+        body: JSON.stringify({ phone: cleanedPhone }),
       })
 
-      if (response.ok) {
-        const data = await response.json()
-        setPhoneSearchResults(data)
-        // Also set validation result if available
-        if (data.virtualCheck) {
-          const warnings: string[] = []
-          const isVirtual = data.virtualCheck.is_virtual || data.virtualCheck.isVirtual || false
-          const isDisposable = data.virtualCheck.is_disposable || data.virtualCheck.isDisposable || false
-          
-          if (isVirtual) warnings.push("This is a virtual phone number")
-          if (isDisposable) warnings.push("This is a disposable phone number")
-          
-          setPhoneValidationResult({
-            phoneNumber: cleanedPhone,
-            isValid: !isVirtual && !isDisposable,
-            isVirtual,
-            isDisposable,
-            riskScore: data.virtualCheck.risk_score || data.virtualCheck.riskScore || (isVirtual || isDisposable ? 70 : 20),
-            carrier: data.virtualCheck.carrier || "Unknown",
-            lineType: data.virtualCheck.line_type || data.virtualCheck.lineType || "Unknown",
-            country: data.virtualCheck.country || "Unknown",
-            warnings,
-            lastSeen: data.virtualCheck.last_seen || data.virtualCheck.lastSeen || null,
-          })
-        }
+      let data = response.ok ? await response.json() : null
+
+      // If we got 200 but no useful data (e.g. cached empty result), retry once with skipCache
+      if (response.ok && data && !data.skipTraceData && !data.virtualCheck) {
+        response = await fetch("/api/search-phone", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone: cleanedPhone, skipCache: true }),
+        })
+        if (response.ok) data = await response.json()
+      }
+
+      if (response.ok && data) {
+        applyPhoneSearchResult(data, cleanedPhone)
       } else {
-        const errorData = await response.json()
-        // Differentiate between "not found" and actual errors
-        if (response.status === 404 || errorData.error?.toLowerCase().includes("not found")) {
+        const errorData = response.ok ? data : await response.json().catch(() => ({}))
+        if (response.status === 404 || errorData?.error?.toLowerCase().includes("not found")) {
           setErrorMessage("INFO: No records found for this phone number. Try searching by email or name instead.")
         } else if (response.status === 429) {
           setErrorMessage("ERROR: Rate limit exceeded. Please try again later or upgrade your plan for higher limits.")
         } else {
-          setErrorMessage(`ERROR: ${errorData.error || "Failed to search phone. Please try again."}`)
+          setErrorMessage(`ERROR: ${errorData?.error || "Failed to search phone. Please try again."}`)
         }
       }
     } catch (error) {
@@ -559,7 +575,7 @@ export function SearchSection() {
                       <Button
                         size="lg"
                         className="h-12 px-8"
-                        onClick={() => handlePhoneSearch()}
+                        onClick={handlePhoneSearch}
                         disabled={isSearching || !phoneQuery}
                       >
                         {isSearching ? (
@@ -574,19 +590,9 @@ export function SearchSection() {
                           </>
                         )}
                       </Button>
-                      <Button
-                        size="lg"
-                        variant="outline"
-                        className="h-12 px-6"
-                        onClick={() => handlePhoneSearch(true)}
-                        disabled={isSearching || !phoneQuery}
-                        title="Ignore cached result and fetch fresh data"
-                      >
-                        Refresh
-                      </Button>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Enter phone in international format with country code. US numbers: +1 followed by 10 digits. Use Refresh if a number returns no data (e.g. after a cached empty result).
+                      Enter phone in international format with country code. US numbers: +1 followed by 10 digits. If no data appears, a fresh lookup runs automatically.
                     </p>
                   </div>
                   {phoneValidationResult && <PhoneValidationResult data={phoneValidationResult} />}

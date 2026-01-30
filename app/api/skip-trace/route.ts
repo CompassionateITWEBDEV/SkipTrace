@@ -60,7 +60,12 @@ export async function POST(request: NextRequest) {
           searchWithFailover((provider) => provider.searchByEmail(email), { timeout: 30000 })
             .then((r) => r.data)
             .catch((err) => {
-              console.warn("Skip trace provider(s) failed:", err instanceof Error ? err.message : err)
+              const msg = err instanceof Error ? err.message : String(err)
+              console.warn("[skip-trace] Skip trace API failed:", msg)
+              if (err && typeof err === "object" && "response" in err) {
+                const res = (err as { response?: { status?: number; statusText?: string } }).response
+                if (res) console.warn("[skip-trace] Skip trace API response:", res.status, res.statusText)
+              }
               return null
             }),
           fetch(socialUrl, {
@@ -83,8 +88,15 @@ export async function POST(request: NextRequest) {
       try {
         socialData = await socialResponse.json()
       } catch (err) {
-        console.error("Failed to parse social media response:", err)
+        console.error("[skip-trace] Failed to parse social media response:", err)
       }
+    } else {
+      console.warn(
+        "[skip-trace] Social media API:",
+        socialResponse.status,
+        socialResponse.statusText,
+        socialResponse.url,
+      )
     }
 
     // If both APIs failed, return an error
@@ -100,7 +112,7 @@ export async function POST(request: NextRequest) {
         error: "Both APIs failed",
       }).catch(console.error)
       throw new ExternalApiError(
-        "Failed to retrieve data from skip trace and social media APIs",
+        "Failed to retrieve data from skip trace and social media APIs. Check server logs for [skip-trace] (status codes). Ensure RAPIDAPI_KEY is set and you are subscribed to Skip Tracing Working API and Email Social Media Checker on RapidAPI.",
         502,
       )
     }

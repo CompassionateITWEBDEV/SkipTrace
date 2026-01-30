@@ -121,14 +121,13 @@ export async function POST(request: Request) {
         body: JSON.stringify({ phone: cleanedPhone }),
         signal: AbortSignal.timeout(30000), // 30 second timeout
       }),
-      // Phone geolocation lookup (using Numverify API if available, or similar service)
-      // Note: This requires NUMVERIFY_API_KEY in environment variables
+      // Phone geolocation (optional; requires NUMVERIFY_API_KEY in .env)
       process.env.NUMVERIFY_API_KEY
         ? fetch(`https://api.numverify.com/v1/validate?access_key=${process.env.NUMVERIFY_API_KEY}&number=${encodeURIComponent(cleanedPhone)}&country_code=&format=1`, {
             method: "GET",
             signal: AbortSignal.timeout(10000), // 10 second timeout
           })
-        : Promise.reject(new Error("Numverify API key not configured")),
+        : Promise.resolve(null as unknown as Response),
     ])
 
     // Process virtual phone check
@@ -151,7 +150,7 @@ export async function POST(request: Request) {
     }
 
     // Process geolocation data
-    if (geolocationResponse.status === "fulfilled" && geolocationResponse.value.ok) {
+    if (geolocationResponse.status === "fulfilled" && geolocationResponse.value && geolocationResponse.value.ok) {
       try {
         const geoData = await geolocationResponse.value.json()
         if (geoData.valid) {
@@ -168,7 +167,7 @@ export async function POST(request: Request) {
       } catch (error) {
         console.error("[phone-search] Numverify/geolocation: failed to parse response", error)
       }
-    } else if (geolocationResponse.status === "fulfilled") {
+    } else if (geolocationResponse.status === "fulfilled" && geolocationResponse.value) {
       const res = geolocationResponse.value
       console.warn("[phone-search] Numverify/geolocation API:", res.status, res.statusText)
     } else if (geolocationResponse.status === "rejected") {
