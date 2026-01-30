@@ -146,6 +146,19 @@ export default function BatchAddressPage() {
                   className="hidden"
                   onChange={handleFileUpload}
                 />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 text-muted-foreground"
+                  onClick={() =>
+                    setAddresses([
+                      { street: "3828 Double Oak Ln", citystatezip: "Irving, TX 75061" },
+                      { street: "123 Main St", city: "Dallas", state: "TX", zip: "75001" },
+                    ])
+                  }
+                >
+                  Fill test data
+                </Button>
                 <Button variant="outline" className="gap-2" onClick={() => fileInputRef.current?.click()}>
                   <Upload className="h-4 w-4" />
                   Upload CSV

@@ -498,6 +498,15 @@ export function SearchSection() {
               <p className="text-xs text-muted-foreground mt-1.5">
                 Enter any identifier — we’ll detect the type and run the right search.
               </p>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="mt-1 text-muted-foreground"
+                onClick={() => setUnifiedQuery("mase2025ai@gmail.com")}
+              >
+                Fill test data
+              </Button>
             </div>
 
             {errorMessage && (
@@ -561,6 +570,15 @@ export function SearchSection() {
                         onChange={(e) => setEmailQuery(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && handleEmailSearch()}
                       />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-12 shrink-0 text-muted-foreground"
+                        onClick={() => setEmailQuery("mase2025ai@gmail.com")}
+                      >
+                        Fill test
+                      </Button>
                       <Button
                         size="lg"
                         className="h-12 px-8"
@@ -669,6 +687,15 @@ export function SearchSection() {
                         onKeyDown={(e) => e.key === "Enter" && handlePhoneSearch()}
                       />
                       <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-12 shrink-0 text-muted-foreground"
+                        onClick={() => setPhoneQuery("+15551234567")}
+                      >
+                        Fill test
+                      </Button>
+                      <Button
                         size="lg"
                         className="h-12 px-8"
                         onClick={() => handlePhoneSearch()}
@@ -766,6 +793,22 @@ export function SearchSection() {
                       <p className="text-sm text-muted-foreground mb-4">
                         Find contact information, social media, and addresses for any person by name.
                       </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="text-muted-foreground"
+                        onClick={() => {
+                          setNameFirst("John")
+                          setNameLast("Smith")
+                          setNameCity("")
+                          setNameState("")
+                        }}
+                      >
+                        Fill test data
+                      </Button>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <Input
@@ -1035,6 +1078,15 @@ export function SearchSection() {
                         onChange={(e) => setAddressQuery(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && handleAddressSearch()}
                       />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-12 shrink-0 text-muted-foreground"
+                        onClick={() => setAddressQuery("3828 Double Oak Ln, Irving, TX 75061")}
+                      >
+                        Fill test
+                      </Button>
                       <Button
                         size="lg"
                         className="h-12 px-8"

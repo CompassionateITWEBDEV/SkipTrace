@@ -367,7 +367,16 @@ export default function AccountPage() {
                         className="mt-1"
                       />
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="text-muted-foreground"
+                        onClick={() => setNewKeyName("Test API Key")}
+                      >
+                        Fill test data
+                      </Button>
                       <Button onClick={createApiKey} disabled={creatingKey || !newKeyName.trim()}>
                         {creatingKey ? (
                           <>
@@ -534,6 +543,17 @@ export default function AccountPage() {
                         className="mt-1"
                       />
                     </div>
+                    <div className="flex gap-2 flex-wrap">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="text-muted-foreground"
+                        onClick={() => setWebhookUrl("https://example.com/webhook")}
+                      >
+                        Fill test data
+                      </Button>
+                    </div>
                     <div>
                       <Label>Events</Label>
                       <div className="flex flex-wrap gap-2 mt-2">
@@ -602,6 +622,15 @@ export default function AccountPage() {
                     placeholder="Your name"
                   />
                 </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="text-muted-foreground"
+                  onClick={() => setProfileName("Test User")}
+                >
+                  Fill test data
+                </Button>
                 <div>
                   <Label htmlFor="email">Email</Label>
                   <Input

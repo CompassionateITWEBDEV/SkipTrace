@@ -150,6 +150,23 @@ export default function SignUpPage() {
               </label>
             </div>
 
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full text-muted-foreground"
+              disabled={loading}
+              onClick={() => {
+                setName("Test User")
+                setEmail("mase2025ai@gmail.com")
+                setPassword("mase1234")
+                setConfirmPassword("mase1234")
+                setTermsAccepted(true)
+              }}
+            >
+              Fill test data
+            </Button>
+
             <Button type="submit" className="w-full" disabled={loading || !termsAccepted}>
               {loading ? (
                 <>

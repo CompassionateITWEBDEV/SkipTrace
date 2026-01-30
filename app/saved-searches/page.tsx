@@ -136,8 +136,8 @@ export default function SavedSearchesPage() {
           </p>
         </div>
 
-        <div className="mb-6">
-          <div className="relative">
+        <div className="mb-6 flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+          <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               id="saved-searches-search"
@@ -149,6 +149,15 @@ export default function SavedSearchesPage() {
               onChange={(e) => setSearchFilter(e.target.value)}
             />
           </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0 text-muted-foreground"
+            onClick={() => setSearchFilter("email")}
+          >
+            Fill test filter
+          </Button>
         </div>
 
         <Suspense fallback={<Loading />}>

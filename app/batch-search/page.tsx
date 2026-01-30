@@ -330,7 +330,7 @@ export default function BatchSearchPage() {
                 onChange={(e) => setInputData(e.target.value)}
               />
 
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -338,6 +338,18 @@ export default function BatchSearchPage() {
                   className="hidden"
                   onChange={handleFileUpload}
                 />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 text-muted-foreground"
+                  onClick={() =>
+                    setInputData(
+                      "mase2025ai@gmail.com\n+15551234567\nJohn Smith"
+                    )
+                  }
+                >
+                  Fill test data
+                </Button>
                 <Button
                   variant="outline"
                   className="gap-2 bg-transparent"

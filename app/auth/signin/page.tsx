@@ -86,6 +86,20 @@ export default function SignInPage() {
               />
             </div>
 
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full text-muted-foreground"
+              disabled={loading}
+              onClick={() => {
+                setEmail("mase2025ai@gmail.com")
+                setPassword("mase1234")
+              }}
+            >
+              Fill test credentials
+            </Button>
+
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? (
                 <>

@@ -479,6 +479,18 @@ export default function MonitoringPage() {
               </AlertDialogDescription>
             </AlertDialogHeader>
             <div className="grid gap-4 py-4">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full text-muted-foreground"
+                onClick={() => {
+                  setNewTargetType("email")
+                  setNewTargetValue("mase2025ai@gmail.com")
+                }}
+              >
+                Fill test data
+              </Button>
               <div className="grid gap-2">
                 <Label htmlFor="new-target-type">Type</Label>
                 <select

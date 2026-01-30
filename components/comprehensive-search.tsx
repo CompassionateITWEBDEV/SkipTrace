@@ -137,6 +137,21 @@ export function ComprehensiveSearch() {
             </Alert>
           )}
 
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-full text-muted-foreground"
+            onClick={() => {
+              setEmail("mase2025ai@gmail.com")
+              setPhone("+15551234567")
+              setName("John Smith")
+              setAddress("3828 Double Oak Ln, Irving, TX 75061")
+            }}
+          >
+            Fill test data
+          </Button>
+
           <Button onClick={handleSearch} disabled={loading} className="w-full" size="lg">
             {loading ? (
               <>

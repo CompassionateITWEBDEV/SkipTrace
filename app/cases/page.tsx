@@ -169,7 +169,19 @@ export default function CasesPage() {
                   className="mt-1"
                 />
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="text-muted-foreground"
+                  onClick={() => {
+                    setNewName("Test Case")
+                    setNewDescription("Test description for faster testing")
+                  }}
+                >
+                  Fill test data
+                </Button>
                 <Button onClick={createCase} disabled={creating || !newName.trim()}>
                   {creating ? (
                     <>
