@@ -24,7 +24,8 @@
     "start": "next start",
     "worker": "tsx workers/index.ts",
     "worker:batch": "tsx workers/batch-processor.ts",
-    "worker:monitoring": "tsx workers/monitoring-processor.ts"
+    "worker:monitoring": "tsx workers/monitoring-processor.ts",
+    "reset-password": "tsx scripts/reset-password.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
