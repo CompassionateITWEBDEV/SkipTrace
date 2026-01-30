@@ -25,7 +25,8 @@
     "worker": "tsx workers/index.ts",
     "worker:batch": "tsx workers/batch-processor.ts",
     "worker:monitoring": "tsx workers/monitoring-processor.ts",
-    "reset-password": "tsx scripts/reset-password.ts"
+    "reset-password": "tsx scripts/reset-password.ts",
+    "delete-account": "tsx scripts/delete-account.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
