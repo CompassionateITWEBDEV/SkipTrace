@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { createErrorResponse, ValidationError } from "@/lib/error-handler"
-import puppeteer, { type Browser } from "puppeteer"
+import type { Browser } from "puppeteer"
 
 // Force dynamic rendering to prevent build-time issues
 export const dynamic = "force-dynamic"
@@ -46,9 +46,10 @@ export async function POST(request: Request) {
     // Generate professional HTML content for the PDF
     const htmlContent = generateReportHTML(title || "Skip Trace Report", data, searchType, query)
 
-    // Generate PDF using Puppeteer
+    // Generate PDF using Puppeteer (dynamic import for Vercel/serverless compatibility)
     try {
-      browser = await puppeteer.launch({
+      const puppeteer = await import("puppeteer")
+      browser = await puppeteer.default.launch({
         headless: true,
         args: [
           "--no-sandbox",

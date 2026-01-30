@@ -18,7 +18,7 @@ export async function checkDataAccess(
   userId: string,
   dataSource: DataSourceType,
 ): Promise<ComplianceCheck> {
-  const user = await dbOperation(
+  const userResult = await dbOperation(
     () =>
       db.user.findUnique({
         where: { id: userId },
@@ -27,9 +27,12 @@ export async function checkDataAccess(
     null,
   )
 
-  if (!user) {
+  if (!userResult) {
     return { allowed: false, reason: "User not found" }
   }
+
+  // Type assertion: dbOperation + Prisma can infer 'never' after null check in some builds
+  const user = userResult as { plan: string; emailVerified: boolean | null }
 
   // Public data sources - available to all authenticated users
   if (dataSource === "public") {

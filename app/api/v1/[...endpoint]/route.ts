@@ -41,7 +41,7 @@ async function handleRequest(
     }
 
     // Validate API key
-    const keyRecord = await dbOperation(
+    const keyRecordResult = await dbOperation(
       () =>
         db.apiKey.findUnique({
           where: { key: apiKey },
@@ -50,7 +50,21 @@ async function handleRequest(
       null,
     )
 
-    if (!keyRecord || !keyRecord.user) {
+    if (!keyRecordResult) {
+      return NextResponse.json(
+        {
+          error: "Invalid API key",
+          message: "The provided API key is not valid. Please check your key and try again.",
+        },
+        { status: 401 },
+      )
+    }
+
+    // Type assertion: dbOperation + Prisma can infer 'never' after null check in some builds
+    type KeyRecordWithUser = { id: string; expiresAt: Date | null; user: { id: string; plan: string } }
+    const keyRecord = keyRecordResult as KeyRecordWithUser
+
+    if (!keyRecord.user) {
       return NextResponse.json(
         {
           error: "Invalid API key",
@@ -84,7 +98,7 @@ async function handleRequest(
     const user = keyRecord.user
 
     // Check rate limits
-    const rateLimitCheck = await checkRateLimit(user.id, user.plan, "search")
+    const rateLimitCheck = await checkRateLimit(user.id, user.plan as "FREE" | "STARTER" | "PROFESSIONAL" | "ENTERPRISE", "search")
     if (!rateLimitCheck.allowed) {
       return NextResponse.json(
         {

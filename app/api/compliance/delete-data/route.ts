@@ -83,7 +83,7 @@ export async function GET(_request: Request) {
     const sessionUser = await requireAuth()
 
     // Fetch full user from database to get createdAt
-    const user = await dbOperation(
+    const userResult = await dbOperation(
       () =>
         db.user.findUnique({
           where: { id: sessionUser.id },
@@ -92,9 +92,12 @@ export async function GET(_request: Request) {
       null,
     )
 
-    if (!user) {
+    if (!userResult) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
+
+    // Type assertion: dbOperation + Prisma can infer 'never' after null check in some builds
+    const user = userResult as { id: string; email: string | null; name: string | null; plan: string; createdAt: Date }
 
     // Collect all user data
     const [searchLogs, savedSearches, reports, subscriptions, apiKeys] = await Promise.all([

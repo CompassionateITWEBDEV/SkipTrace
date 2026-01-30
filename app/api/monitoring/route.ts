@@ -94,7 +94,7 @@ export async function POST(request: Request) {
     }
 
     // Create subscription
-    const subscription = await dbOperation(
+    const subscriptionResult = await dbOperation(
       () =>
         db.monitoringSubscription.create({
           data: {
@@ -109,9 +109,12 @@ export async function POST(request: Request) {
       undefined,
     )
 
-    if (!subscription) {
+    if (!subscriptionResult) {
       throw new Error("Failed to create subscription")
     }
+
+    // Type assertion: dbOperation + Prisma can infer 'never' after check in some builds
+    const subscription = subscriptionResult as { id: string; userId: string; targetType: string; targetValue: string; frequency: string; nextCheck: Date; active: boolean }
 
     // Add monitoring job to queue
     try {
@@ -143,7 +146,7 @@ export async function DELETE(request: Request) {
     }
 
     // Verify ownership
-    const subscription = await dbOperation(
+    const subscriptionResult = await dbOperation(
       () =>
         db.monitoringSubscription.findUnique({
           where: { id },
@@ -151,9 +154,17 @@ export async function DELETE(request: Request) {
       null,
     )
 
-    if (!subscription || subscription.userId !== user.id) {
+    if (!subscriptionResult) {
       return NextResponse.json({ error: "Subscription not found" }, { status: 404 })
     }
+
+    // Type assertion: dbOperation + Prisma can infer 'never' after null check in some builds
+    const subscription = subscriptionResult as { id: string; userId: string }
+
+    if (subscription.userId !== user.id) {
+      return NextResponse.json({ error: "Subscription not found" }, { status: 404 })
+    }
+
 
     await dbOperation(
       () =>

@@ -3,7 +3,8 @@ import { requireAuth } from "@/lib/auth"
 import { db, dbOperation } from "@/lib/db"
 import { createErrorResponse, ValidationError } from "@/lib/error-handler"
 import { logAuditEvent } from "@/lib/audit-log"
-import type { Plan } from "@prisma/client"
+
+type Plan = "FREE" | "STARTER" | "PROFESSIONAL" | "ENTERPRISE"
 
 // Force dynamic rendering
 export const dynamic = "force-dynamic"
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
     }
 
     // Check if user already has this plan or higher
-    const currentUser = await dbOperation(
+    const currentUserResult = await dbOperation(
       () =>
         db.user.findUnique({
           where: { id: user.id },
@@ -32,9 +33,12 @@ export async function POST(request: Request) {
       null,
     )
 
-    if (!currentUser) {
+    if (!currentUserResult) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
+
+    // Type assertion: dbOperation + Prisma can infer 'never' after null check in some builds
+    const currentUser = currentUserResult as { plan: Plan }
 
     const planHierarchy: Record<Plan, number> = {
       FREE: 0,

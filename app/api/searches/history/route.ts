@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { getCurrentUser } from "@/lib/auth"
-import type { SearchType } from "@prisma/client"
+type SearchType = "EMAIL" | "PHONE" | "NAME" | "ADDRESS" | "COMPREHENSIVE" | "BATCH"
 
 // Force dynamic rendering to prevent build-time database calls
 export const dynamic = "force-dynamic"

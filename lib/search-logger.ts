@@ -1,7 +1,8 @@
 // Utility for logging searches to the database
 
 import { db } from "./db"
-import type { SearchType } from "@prisma/client"
+
+type SearchType = "EMAIL" | "PHONE" | "NAME" | "ADDRESS" | "COMPREHENSIVE" | "BATCH"
 
 interface LogSearchParams {
   userId?: string

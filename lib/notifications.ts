@@ -1,7 +1,6 @@
 // Notification system for monitoring alerts and system events
 
 import { db, dbOperation } from "./db"
-import type { PrismaClient } from "@prisma/client"
 
 // Type helper for notification model
 type NotificationModel = {
@@ -10,7 +9,7 @@ type NotificationModel = {
   }
 }
 
-const dbWithNotifications = db as unknown as PrismaClient & NotificationModel
+const dbWithNotifications = db as unknown as NotificationModel
 
 export interface NotificationData {
   userId: string

@@ -1,7 +1,8 @@
 // Rate limiting based on user plans
 
 import { db } from "./db"
-import type { Plan } from "@prisma/client"
+
+type Plan = "FREE" | "STARTER" | "PROFESSIONAL" | "ENTERPRISE"
 
 interface PlanLimits {
   searchesPerMonth: number

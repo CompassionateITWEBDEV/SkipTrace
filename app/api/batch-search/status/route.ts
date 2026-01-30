@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
-import { db, dbOperation } from "@/lib/db"
+import { db } from "@/lib/db"
 import { createErrorResponse } from "@/lib/error-handler"
 
 // Force dynamic rendering to prevent build-time database calls
@@ -24,17 +24,30 @@ export async function GET(request: Request) {
     }
 
     // Get job from database
-    const job = await dbOperation(
-      () =>
-        db.batchJob.findUnique({
-          where: { id: jobId },
-        }),
-      null,
-    )
+    const jobResult = await db.batchJob.findUnique({
+      where: { id: jobId },
+    })
 
-    if (!job) {
+    if (!jobResult) {
       return NextResponse.json({ error: "Job not found" }, { status: 404 })
     }
+
+    // Type assertion: Prisma + driver adapter can infer 'never' after null check in some builds
+    type BatchJobRow = {
+      id: string
+      userId: string | null
+      status: string
+      inputCount: number
+      processedCount: number
+      successCount: number
+      errorCount: number
+      results: unknown
+      error: string | null
+      createdAt: Date
+      updatedAt: Date
+      completedAt: Date | null
+    }
+    const job = jobResult as BatchJobRow
 
     // Verify ownership
     if (job.userId && job.userId !== user.id) {

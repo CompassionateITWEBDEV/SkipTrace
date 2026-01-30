@@ -23,7 +23,7 @@ export async function GET(request: Request) {
       title: { contains: "Monitoring Alert" },
     }
 
-    const alerts = await dbOperation(
+    const alertsResult = await dbOperation(
       () =>
         db.report.findMany({
           where,
@@ -40,6 +40,10 @@ export async function GET(request: Request) {
         }),
       [],
     )
+
+    // Type assertion: dbOperation + Prisma can infer 'never[]' in some builds
+    type AlertRow = { id: string; title: string; query: unknown; results: unknown; createdAt: Date; searchType: string }
+    const alerts = alertsResult as AlertRow[]
 
     // In a full implementation, you'd have a separate alerts table with read/unread status
     // For now, we'll use reports as alerts

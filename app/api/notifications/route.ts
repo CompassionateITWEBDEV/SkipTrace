@@ -2,12 +2,11 @@ import { NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth"
 import { db, dbOperation } from "@/lib/db"
 import { createErrorResponse } from "@/lib/error-handler"
-import type { PrismaClient } from "@prisma/client"
 
 // Force dynamic rendering
 export const dynamic = "force-dynamic"
 
-// Type helper for notification model
+// Type helper for notification model (Prisma client with notification delegate)
 type NotificationModel = {
   notification: {
     findMany: (args: { where: unknown; orderBy: unknown; take: number }) => Promise<Array<{ id: string; userId: string; type: string; title: string; message: string; metadata: unknown; read: boolean; createdAt: Date }>>
@@ -19,7 +18,7 @@ type NotificationModel = {
   }
 }
 
-const dbWithNotifications = db as unknown as PrismaClient & NotificationModel
+const dbWithNotifications = db as unknown as NotificationModel
 
 /**
  * GET - Fetch user notifications

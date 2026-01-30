@@ -12,7 +12,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
   try {
     const { token } = await params
 
-    const report = await dbOperation(
+    const reportResult = await dbOperation(
       () =>
         db.report.findUnique({
           where: { sharedToken: token },
@@ -20,15 +20,18 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
       null,
     )
 
-    if (!report) {
+    if (!reportResult) {
       return NextResponse.json({ error: "Report not found or link has expired" }, { status: 404 })
     }
+
+    // Type assertion: dbOperation + Prisma can infer 'never' after null check in some builds
+    const report = reportResult as { id: string; shared: boolean; [key: string]: unknown }
 
     if (!report.shared) {
       return NextResponse.json({ error: "This report is not shared" }, { status: 403 })
     }
 
-    return NextResponse.json({ report })
+    return NextResponse.json({ report: reportResult })
   } catch (error) {
     console.error("Error fetching shared report:", error)
     return createErrorResponse(error, "Failed to fetch shared report")

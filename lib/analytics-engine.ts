@@ -1,7 +1,8 @@
 // Advanced analytics engine for predictive analytics and custom reports
 
 import { db, dbOperation } from "./db"
-import type { SearchType } from "@prisma/client"
+
+type SearchType = "EMAIL" | "PHONE" | "NAME" | "ADDRESS" | "COMPREHENSIVE" | "BATCH"
 
 export interface AnalyticsMetrics {
   totalSearches: number
@@ -39,7 +40,7 @@ export async function getAnalyticsMetrics(
   }
 
   // Get all search logs
-  const logs = await dbOperation(
+  const logsResult = await dbOperation(
     () =>
       db.searchLog.findMany({
         where,
@@ -47,6 +48,9 @@ export async function getAnalyticsMetrics(
       }),
     [],
   )
+
+  type SearchLogRow = { success: boolean; responseTime: number | null; searchType: string; timestamp: Date; query: string }
+  const logs = logsResult as SearchLogRow[]
 
   const totalSearches = logs.length
   const successfulSearches = logs.filter((log) => log.success).length
@@ -119,7 +123,7 @@ export async function predictSearchSuccess(
   userId?: string,
 ): Promise<PredictiveMetrics> {
   // Get historical data for similar searches
-  const similarLogs = await dbOperation(
+  const similarLogsResult = await dbOperation(
     () =>
       db.searchLog.findMany({
         where: {
@@ -133,6 +137,9 @@ export async function predictSearchSuccess(
       }),
     [],
   )
+
+  type SimilarLogRow = { success: boolean; searchType: string; timestamp: Date }
+  const similarLogs = similarLogsResult as SimilarLogRow[]
 
   if (similarLogs.length === 0) {
     return {
@@ -239,7 +246,7 @@ export async function generateCustomReport(filters: {
     where.searchType = { in: filters.searchTypes }
   }
 
-  const logs = await dbOperation(
+  const logsResult2 = await dbOperation(
     () =>
       db.searchLog.findMany({
         where,
@@ -247,6 +254,9 @@ export async function generateCustomReport(filters: {
       }),
     [],
   )
+
+  type CustomReportLogRow = { timestamp: Date; searchType: SearchType; query: string; success: boolean; responseTime: number | null }
+  const logs = logsResult2 as CustomReportLogRow[]
 
   // Filter by success rate if specified
   let filteredLogs = logs

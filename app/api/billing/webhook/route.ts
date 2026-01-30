@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server"
 import { db, dbOperation } from "@/lib/db"
-import type { Plan } from "@prisma/client"
 import { createErrorResponse } from "@/lib/error-handler"
 import { logAuditEvent } from "@/lib/audit-log"
+
+type Plan = "FREE" | "STARTER" | "PROFESSIONAL" | "ENTERPRISE"
 
 // Force dynamic rendering to prevent build-time database calls
 export const dynamic = "force-dynamic"

@@ -1,6 +1,7 @@
 import type React from "react"
 import type { Metadata, Viewport } from "next"
 import { Analytics } from "@vercel/analytics/next"
+import { SpeedInsights } from "@vercel/speed-insights/next"
 import { Navigation } from "@/components/navigation"
 import { Footer } from "@/components/footer"
 import { Providers } from "@/components/providers"
@@ -50,8 +51,13 @@ export default function RootLayout({
             <Navigation />
             <div className="flex-1">{children}</div>
             <Footer />
-            {/* Only load Vercel Analytics in production/Vercel environment */}
-            {process.env.VERCEL && <Analytics />}
+            {/* Only load Vercel Analytics and Speed Insights in production/Vercel environment */}
+            {process.env.VERCEL && (
+              <>
+                <Analytics />
+                <SpeedInsights />
+              </>
+            )}
           </ErrorBoundary>
         </Providers>
       </body>
