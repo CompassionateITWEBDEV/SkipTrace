@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Progress } from "@/components/ui/progress"
 import type { BatchSearchResult } from "@/lib/types"
+import { toast } from "sonner"
 import Papa from "papaparse"
 import * as XLSX from "xlsx"
 
@@ -260,16 +261,24 @@ export default function BatchSearchPage() {
           setProcessing(false)
         }
       } else {
-        const errorData = await response.json()
-        console.error("Batch search failed:", errorData)
-        // Show error in results
+        const errorData = await response.json().catch(() => ({}))
+        const isRateLimit = response.status === 429
+        const message = isRateLimit
+          ? "Rate limit exceeded. Please try again later or upgrade your plan for higher limits."
+          : (errorData.error as string) || "Failed to process batch search"
+        if (isRateLimit) {
+          toast.error("Rate limit exceeded", {
+            description: "Upgrade your plan for higher limits.",
+            action: { label: "View plans", onClick: () => window.location.assign("/pricing") },
+          })
+        }
         setResults([
           {
             input: "Batch search error",
             type: "unknown",
             status: "error",
             results: 0,
-            error: errorData.error || "Failed to process batch search",
+            error: message,
           },
         ])
         setProcessing(false)

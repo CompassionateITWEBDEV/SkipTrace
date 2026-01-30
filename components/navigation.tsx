@@ -16,6 +16,7 @@ import {
   MapPin,
   User,
   LogOut,
+  FolderOpen,
 } from "lucide-react"
 import { useState } from "react"
 import {
@@ -38,6 +39,7 @@ export function Navigation() {
     { href: "/batch-search", label: "Batch", icon: Layers },
     { href: "/batch-address", label: "Batch Address", icon: MapPin },
     { href: "/reports", label: "Reports", icon: FileText },
+    { href: "/cases", label: "Cases", icon: FolderOpen },
     { href: "/analytics", label: "Analytics", icon: BarChart3 },
     { href: "/pricing", label: "Pricing", icon: DollarSign },
     { href: "/api-docs", label: "API Docs", icon: BookOpen },

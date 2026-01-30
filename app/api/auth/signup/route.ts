@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { hash } from "bcryptjs"
 import { z } from "zod"
+import { getClientIdentifier, checkAuthRateLimit } from "@/lib/auth-rate-limit"
 
 // Force dynamic rendering to prevent build-time database calls
 export const dynamic = "force-dynamic"
@@ -14,6 +15,14 @@ const signupSchema = z.object({
 
 export async function POST(request: Request) {
   try {
+    const identifier = getClientIdentifier(request)
+    const { allowed } = await checkAuthRateLimit(identifier)
+    if (!allowed) {
+      return NextResponse.json(
+        { error: "Too many attempts. Please try again in 15 minutes." },
+        { status: 429 },
+      )
+    }
     const body = await request.json()
     const { email, password, name } = signupSchema.parse(body)
 

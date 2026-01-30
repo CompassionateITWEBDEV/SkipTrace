@@ -4,6 +4,7 @@ import { useState, Suspense } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -14,6 +15,7 @@ import { SkipTraceResults } from "./skip-trace-results"
 import { AddressSearchResults } from "./address-search-results"
 import { NameSearchResults } from "./name-search-results"
 import type { SkipTraceData, SocialMediaData } from "@/lib/types"
+import { toast } from "sonner"
 
 interface PhoneValidationData {
   phoneNumber: string
@@ -28,7 +30,19 @@ interface PhoneValidationData {
   lastSeen: string | null
 }
 
+function detectSearchType(input: string): "email" | "phone" | "name" | "address" {
+  const trimmed = input.trim()
+  if (!trimmed) return "email"
+  if (trimmed.includes("@") && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return "email"
+  const digitsOnly = trimmed.replace(/\D/g, "")
+  if (digitsOnly.length >= 10 && digitsOnly.length <= 15) return "phone"
+  if (/^\d+\s+\w+(\s+(st|street|ave|ave\.|blvd|rd|drive|way|ln|lane))?/i.test(trimmed) || (trimmed.includes(",") && trimmed.length > 10)) return "address"
+  return "name"
+}
+
 export function SearchSection() {
+  const [activeTab, setActiveTab] = useState("email")
+  const [unifiedQuery, setUnifiedQuery] = useState("")
   const [emailQuery, setEmailQuery] = useState("")
   const [phoneQuery, setPhoneQuery] = useState("")
   const [nameFirst, setNameFirst] = useState("")
@@ -59,18 +73,20 @@ export function SearchSection() {
   const [creatingSubscription, setCreatingSubscription] = useState(false)
   const [subscriptionSuccess, setSubscriptionSuccess] = useState<string | null>(null)
 
-  const handleEmailSearch = async () => {
-    if (!emailQuery) return
+  const handleEmailSearch = async (override?: string) => {
+    const q = override ?? emailQuery
+    if (!q) return
 
     setIsSearching(true)
     setSkipTraceResults(null)
     setErrorMessage("")
+    if (override) setEmailQuery(override)
 
     try {
       const response = await fetch("/api/skip-trace", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: emailQuery }),
+        body: JSON.stringify({ email: q }),
       })
 
       if (response.ok) {
@@ -86,8 +102,8 @@ export function SearchSection() {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                title: `Email Search: ${emailQuery}`,
-                query: JSON.stringify({ email: emailQuery }),
+                title: `Email Search: ${q}`,
+                query: JSON.stringify({ email: q }),
                 results: data,
                 searchType: "EMAIL",
               }),
@@ -104,6 +120,10 @@ export function SearchSection() {
           setErrorMessage("INFO: No records found for this email address. Try searching by name or phone number instead.")
         } else if (response.status === 429) {
           setErrorMessage("ERROR: Rate limit exceeded. Please try again later or upgrade your plan for higher limits.")
+          toast.error("Rate limit exceeded", {
+            description: "Upgrade your plan for higher limits.",
+            action: { label: "View plans", onClick: () => window.location.assign("/pricing") },
+          })
         } else {
           setErrorMessage(`ERROR: ${errorData.error || "Failed to perform skip trace. Please try again."}`)
         }
@@ -143,10 +163,11 @@ export function SearchSection() {
     }
   }
 
-  const handlePhoneSearch = async () => {
-    if (!phoneQuery) return
+  const handlePhoneSearch = async (override?: string) => {
+    const raw = override ?? phoneQuery
+    if (!raw) return
 
-    let cleanedPhone = phoneQuery.replace(/[\s\-().]/g, "")
+    let cleanedPhone = raw.replace(/[\s\-().]/g, "")
 
     if (!/^\+?\d{10,15}$/.test(cleanedPhone)) {
       setErrorMessage("Please enter a valid phone number (10-15 digits). Example: +14155551234 or 4155551234")
@@ -194,6 +215,10 @@ export function SearchSection() {
           setErrorMessage("INFO: No records found for this phone number. Try searching by email or name instead.")
         } else if (response.status === 429) {
           setErrorMessage("ERROR: Rate limit exceeded. Please try again later or upgrade your plan for higher limits.")
+          toast.error("Rate limit exceeded", {
+            description: "Upgrade your plan for higher limits.",
+            action: { label: "View plans", onClick: () => window.location.assign("/pricing") },
+          })
         } else {
           setErrorMessage(`ERROR: ${errorData?.error || "Failed to search phone. Please try again."}`)
         }
@@ -206,20 +231,24 @@ export function SearchSection() {
     }
   }
 
-  const handleNameSearch = async () => {
-    if (!nameFirst && !nameLast) return
+  const handleNameSearch = async (firstOverride?: string, lastOverride?: string) => {
+    const first = firstOverride ?? nameFirst
+    const last = lastOverride ?? nameLast
+    if (!first && !last) return
 
     setIsSearching(true)
     setNameSearchResults(null)
     setErrorMessage("")
+    if (firstOverride !== undefined) setNameFirst(first)
+    if (lastOverride !== undefined) setNameLast(last)
 
     try {
       const response = await fetch("/api/search-name", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          firstName: nameFirst,
-          lastName: nameLast,
+          firstName: first,
+          lastName: last,
           middleName: nameMiddle || undefined,
           city: nameCity || undefined,
           state: nameState || undefined,
@@ -250,20 +279,22 @@ export function SearchSection() {
     }
   }
 
-  const handleAddressSearch = async () => {
-    if (!addressQuery) return
+  const handleAddressSearch = async (override?: string) => {
+    const q = override ?? addressQuery
+    if (!q) return
 
     setIsSearching(true)
     setAddressSearchResults(null)
     setErrorMessage("")
+    if (override) setAddressQuery(override)
 
     try {
-      const parts = addressQuery.split(",").map((p) => p.trim())
+      const parts = q.split(",").map((p: string) => p.trim())
       const response = await fetch("/api/search-address", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          street: parts[0] || addressQuery,
+          street: parts[0] || q,
           city: parts[1] || "",
           state: parts[2] || "",
           zip: parts[3] || "",
@@ -285,6 +316,10 @@ export function SearchSection() {
           setErrorMessage("INFO: No records found for this address. Try searching by name or email instead.")
         } else if (response.status === 429) {
           setErrorMessage("ERROR: Rate limit exceeded. Please try again later or upgrade your plan for higher limits.")
+          toast.error("Rate limit exceeded", {
+            description: "Upgrade your plan for higher limits.",
+            action: { label: "View plans", onClick: () => window.location.assign("/pricing") },
+          })
         } else {
           setErrorMessage(`ERROR: ${errorData.error || "Failed to search address. Please try again."}`)
         }
@@ -345,6 +380,33 @@ export function SearchSection() {
     }
   }
 
+  const handleUnifiedSearch = () => {
+    const q = unifiedQuery.trim()
+    if (!q) return
+    const type = detectSearchType(q)
+    setActiveTab(type)
+    if (type === "email") {
+      setEmailQuery(q)
+      handleEmailSearch(q)
+    } else if (type === "phone") {
+      let cleaned = q.replace(/\D/g, "")
+      if (cleaned.length === 10) cleaned = "+1" + cleaned
+      else if (!cleaned.startsWith("+")) cleaned = "+" + cleaned
+      setPhoneQuery(cleaned)
+      handlePhoneSearch(cleaned)
+    } else if (type === "address") {
+      setAddressQuery(q)
+      handleAddressSearch(q)
+    } else {
+      const parts = q.split(/\s+/)
+      const first = parts[0] || ""
+      const last = parts.length >= 2 ? parts.slice(1).join(" ") : ""
+      setNameFirst(first)
+      setNameLast(last)
+      handleNameSearch(first, last)
+    }
+  }
+
   const handleCreateSubscription = async (targetType: "email" | "phone" | "name", targetValue: string, frequency = "weekly") => {
     if (!consentChecked) {
       setErrorMessage("You must confirm legal authorization to create monitoring subscriptions")
@@ -389,21 +451,55 @@ export function SearchSection() {
   }
 
   return (
-    <section id="search" className="py-16 px-4 bg-muted/30">
+    <section id="search" className="py-10 sm:py-16 px-3 sm:px-4 bg-muted/30">
       <div className="max-w-4xl mx-auto">
-        <div className="text-center mb-10">
+        <div className="text-center mb-6 sm:mb-10">
           <Badge variant="secondary" className="mb-4">
             Powerful Search Tools
           </Badge>
-          <h2 className="text-3xl font-bold mb-4">Find Anyone, Anywhere</h2>
-          <p className="text-muted-foreground max-w-2xl mx-auto">
+          <h2 className="text-2xl sm:text-3xl font-bold mb-4">Find Anyone, Anywhere</h2>
+          <p className="text-muted-foreground max-w-2xl mx-auto text-sm sm:text-base">
             Search across billions of records using email, phone, name, or address. Get instant results with detailed
             contact information.
           </p>
         </div>
 
         <Card className="border-2 shadow-lg">
-          <CardContent className="p-6">
+          <CardContent className="p-4 sm:p-6">
+            {/* Unified search bar */}
+            <div className="mb-4 sm:mb-6">
+              <Label htmlFor="unified-search" className="text-sm text-muted-foreground sr-only">
+                Search by email, phone, name, or address
+              </Label>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Input
+                  id="unified-search"
+                  type="text"
+                  placeholder="Email, phone, name, or address..."
+                  className="h-11 sm:h-12 flex-1"
+                  value={unifiedQuery}
+                  onChange={(e) => setUnifiedQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleUnifiedSearch()}
+                />
+                <Button
+                  size="lg"
+                  className="h-11 sm:h-12 px-6 shrink-0"
+                  onClick={handleUnifiedSearch}
+                  disabled={isSearching || !unifiedQuery.trim()}
+                >
+                  {isSearching ? (
+                    <Loader2 className="h-4 w-4 animate-spin sm:mr-2" />
+                  ) : (
+                    <Search className="h-4 w-4 sm:mr-2" />
+                  )}
+                  <span className="hidden sm:inline">Search</span>
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1.5">
+                Enter any identifier — we’ll detect the type and run the right search.
+              </p>
+            </div>
+
             {errorMessage && (
               <Alert variant={errorMessage.startsWith("ERROR:") ? "destructive" : errorMessage.startsWith("INFO:") ? "default" : "destructive"} className="mb-4">
                 <AlertTriangle className="h-4 w-4" />
@@ -419,8 +515,8 @@ export function SearchSection() {
             )}
 
             <Suspense fallback={<div>Loading...</div>}>
-              <Tabs defaultValue="email" className="w-full">
-                <TabsList className="grid w-full grid-cols-5 mb-6">
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                <TabsList className="grid w-full grid-cols-5 mb-4 sm:mb-6 gap-0.5 sm:gap-1">
                   <TabsTrigger value="email" className="flex items-center gap-1 text-xs sm:text-sm">
                     <Mail className="h-4 w-4" />
                     <span className="hidden sm:inline">Email</span>
@@ -468,7 +564,7 @@ export function SearchSection() {
                       <Button
                         size="lg"
                         className="h-12 px-8"
-                        onClick={handleEmailSearch}
+                        onClick={() => handleEmailSearch()}
                         disabled={isSearching || !emailQuery}
                       >
                         {isSearching ? (
@@ -575,7 +671,7 @@ export function SearchSection() {
                       <Button
                         size="lg"
                         className="h-12 px-8"
-                        onClick={handlePhoneSearch}
+                        onClick={() => handlePhoneSearch()}
                         disabled={isSearching || !phoneQuery}
                       >
                         {isSearching ? (
@@ -748,7 +844,7 @@ export function SearchSection() {
                     <Button
                       size="lg"
                       className="w-full h-12"
-                      onClick={handleNameSearch}
+                      onClick={() => handleNameSearch()}
                       disabled={isSearching || (!nameFirst && !nameLast)}
                     >
                       {isSearching ? (
@@ -942,7 +1038,7 @@ export function SearchSection() {
                       <Button
                         size="lg"
                         className="h-12 px-8"
-                        onClick={handleAddressSearch}
+                        onClick={() => handleAddressSearch()}
                         disabled={isSearching || !addressQuery}
                       >
                         {isSearching ? (

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { db, dbOperation } from "@/lib/db"
 import { createErrorResponse } from "@/lib/error-handler"
 import { logAuditEvent } from "@/lib/audit-log"
+import { stripe, verifyWebhookSignature } from "@/lib/stripe"
 
 type Plan = "FREE" | "STARTER" | "PROFESSIONAL" | "ENTERPRISE"
 
@@ -9,8 +10,8 @@ type Plan = "FREE" | "STARTER" | "PROFESSIONAL" | "ENTERPRISE"
 export const dynamic = "force-dynamic"
 
 /**
- * Stripe webhook handler for billing events
- * This handles subscription updates, payments, etc.
+ * Stripe webhook handler for billing events.
+ * Verifies signature, finds user by stripeCustomerId, and updates plan only for that user.
  */
 export async function POST(request: Request) {
   try {
@@ -20,70 +21,87 @@ export async function POST(request: Request) {
     if (!signature) {
       return NextResponse.json({ error: "Missing signature" }, { status: 400 })
     }
+    if (!stripe || !process.env.STRIPE_WEBHOOK_SECRET) {
+      return NextResponse.json({ error: "Stripe webhook not configured" }, { status: 503 })
+    }
 
-    // In production, verify the Stripe signature
-    // const event = stripe.webhooks.constructEvent(body, signature, process.env.STRIPE_WEBHOOK_SECRET!)
+    let event: { type: string; data: { object: Record<string, unknown> } }
+    try {
+      event = verifyWebhookSignature(body, signature) as unknown as {
+        type: string
+        data: { object: Record<string, unknown> }
+      }
+    } catch (err) {
+      console.error("Stripe webhook signature verification failed:", err)
+      return NextResponse.json({ error: "Invalid signature" }, { status: 400 })
+    }
 
-    // For now, parse the event manually
-    const event = JSON.parse(body)
-
-    // Handle different event types
     switch (event.type) {
+      case "checkout.session.completed": {
+        const session = event.data.object as {
+          customer?: string
+          metadata?: { userId?: string }
+        }
+        const customerId = session.customer
+        const userId = session.metadata?.userId
+        if (userId && customerId) {
+          await db.user.update({
+            where: { id: userId },
+            data: { stripeCustomerId: customerId },
+          })
+        }
+        break
+      }
+
       case "customer.subscription.created":
       case "customer.subscription.updated": {
-        const subscription = event.data.object
-        const _customerId = subscription.customer
-        const plan = mapStripePlanToAppPlan(subscription.items.data[0]?.price.id)
+        const subscription = event.data.object as {
+          id: string
+          customer: string
+          items?: { data?: Array<{ price?: { id?: string } }> }
+        }
+        const customerId = subscription.customer
+        const priceId = subscription.items?.data?.[0]?.price?.id
+        const plan = mapStripePlanToAppPlan(priceId)
 
-        // Find user by Stripe customer ID (you'd need to store this in the User model)
-        // For now, this is a placeholder
-        await dbOperation(
+        const updated = await dbOperation(
           () =>
             db.user.updateMany({
-              where: {
-                // In production, add stripeCustomerId field to User model
-                // stripeCustomerId: customerId,
-              },
+              where: { stripeCustomerId: customerId },
               data: { plan },
             }),
           undefined,
         )
 
-        // Log audit event
-        await logAuditEvent({
-          action: "subscription_updated",
-          resource: "billing",
-          resourceId: subscription.id,
-          details: { plan, customerId: subscription.customer },
-        }).catch(console.error)
-
+        if (updated.count > 0) {
+          await logAuditEvent({
+            action: "subscription_updated",
+            resource: "billing",
+            resourceId: subscription.id,
+            details: { plan, customerId },
+          }).catch(console.error)
+        }
         break
       }
 
       case "customer.subscription.deleted": {
-        const subscription = event.data.object
-        const _customerId = subscription.customer
+        const subscription = event.data.object as { customer: string }
+        const customerId = subscription.customer
 
-        // Downgrade to FREE plan
         await db.user.updateMany({
-          where: {
-            // stripeCustomerId: customerId,
-          },
+          where: { stripeCustomerId: customerId },
           data: { plan: "FREE" },
         })
-
         break
       }
 
       case "invoice.payment_succeeded": {
-        // Handle successful payment
-        console.log("Payment succeeded:", event.data.object.id)
+        console.log("Payment succeeded:", (event.data.object as { id: string }).id)
         break
       }
 
       case "invoice.payment_failed": {
-        // Handle failed payment
-        console.log("Payment failed:", event.data.object.id)
+        console.log("Payment failed:", (event.data.object as { id: string }).id)
         break
       }
     }
@@ -96,17 +114,17 @@ export async function POST(request: Request) {
 }
 
 /**
- * Map Stripe price ID to app plan
+ * Map Stripe price ID to app plan.
+ * Uses env STRIPE_PRICE_* or common Stripe price ID patterns.
  */
 function mapStripePlanToAppPlan(priceId: string | undefined): Plan {
   if (!priceId) return "FREE"
 
-  // In production, map your Stripe price IDs to plans
   const planMap: Record<string, Plan> = {
-    price_starter: "STARTER",
-    price_professional: "PROFESSIONAL",
-    price_enterprise: "ENTERPRISE",
+    [process.env.STRIPE_PRICE_STARTER || "price_starter"]: "STARTER",
+    [process.env.STRIPE_PRICE_PROFESSIONAL || "price_professional"]: "PROFESSIONAL",
+    [process.env.STRIPE_PRICE_ENTERPRISE || "price_enterprise"]: "ENTERPRISE",
   }
 
-  return planMap[priceId] || "FREE"
+  return planMap[priceId] ?? "FREE"
 }

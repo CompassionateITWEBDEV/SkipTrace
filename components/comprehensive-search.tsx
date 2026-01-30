@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, Search, TrendingUp, CheckCircle2, AlertTriangle } from "lucide-react"
+import { toast } from "sonner"
 import type { EnrichmentResult } from "@/lib/types"
 import { generateDetailedSummary } from "@/lib/summary-generator"
 import { correlatePersonData } from "@/lib/data-correlation"
@@ -39,8 +40,19 @@ export function ComprehensiveSearch() {
         body: JSON.stringify({ email, phone, name, address }),
       })
 
+      if (response.status === 429) {
+        setError("Search limit reached. Please upgrade your plan or try again later.")
+        toast.error("Rate limit exceeded", {
+          description: "Upgrade your plan for higher limits.",
+          action: { label: "View plans", onClick: () => window.location.assign("/pricing") },
+        })
+        return
+      }
+
       if (!response.ok) {
-        throw new Error("Search failed")
+        const data = await response.json().catch(() => ({}))
+        setError(data.error || "Search failed. Please try again.")
+        return
       }
 
       const data = await response.json()

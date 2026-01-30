@@ -67,6 +67,18 @@ export default function ApiDocsPage() {
                   <li><code>X-Request-ID</code> - Unique request identifier for support</li>
                 </ul>
               </div>
+              <div>
+                <h3 className="font-semibold mb-2">Rate Limits & 429</h3>
+                <p className="text-sm text-muted-foreground mb-2">
+                  Requests are rate-limited per user/API key. When you exceed your plan limit, the API returns <code>429 Too Many Requests</code> with a JSON body such as:
+                </p>
+                <pre className="bg-muted p-4 rounded-lg overflow-x-auto text-sm">
+                  {`{ "error": "Rate limit exceeded. Please try again later or upgrade your plan." }`}
+                </pre>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Check <code>X-RateLimit-Remaining</code> and <code>X-RateLimit-Reset</code> to avoid hitting the limit.
+                </p>
+              </div>
             </CardContent>
           </Card>
 

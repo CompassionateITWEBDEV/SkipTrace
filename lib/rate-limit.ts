@@ -1,6 +1,11 @@
 // Rate limiting based on user plans
+// Uses optional cache (Redis or in-memory) to avoid repeated DB counts per period
 
 import { db } from "./db"
+import { cache } from "./cache"
+
+/** TTL for cached usage counts (ms). Short to keep rate limits accurate while reducing DB load. */
+const RATE_LIMIT_CACHE_TTL_MS = 60 * 1000 // 1 minute
 
 type Plan = "FREE" | "STARTER" | "PROFESSIONAL" | "ENTERPRISE"
 
@@ -38,6 +43,56 @@ const PLAN_LIMITS: Record<Plan, PlanLimits> = {
   },
 }
 
+function monthKey(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  return `${y}-${m}`
+}
+function dayKey(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const day = String(d.getDate()).padStart(2, "0")
+  return `${y}-${m}-${day}`
+}
+
+/** Invalidate cached usage counts for a user so next rate-limit check uses fresh DB counts. Call after logging a search. */
+export async function invalidateUsageCache(userId: string): Promise<void> {
+  const now = new Date()
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  await Promise.all([
+    cache.delete(`ratelimit:month:${userId}:${monthKey(startOfMonth)}`).catch(() => {}),
+    cache.delete(`ratelimit:day:${userId}:${dayKey(startOfDay)}`).catch(() => {}),
+  ])
+}
+
+async function getMonthlyCount(userId: string): Promise<number> {
+  const startOfMonth = new Date()
+  startOfMonth.setDate(1)
+  startOfMonth.setHours(0, 0, 0, 0)
+  const key = `ratelimit:month:${userId}:${monthKey(startOfMonth)}`
+  const cached = await cache.get<number>(key)
+  if (typeof cached === "number") return cached
+  const count = await db.searchLog.count({
+    where: { userId, timestamp: { gte: startOfMonth } },
+  })
+  await cache.set(key, count, RATE_LIMIT_CACHE_TTL_MS).catch(() => {})
+  return count
+}
+
+async function getDailyCount(userId: string): Promise<number> {
+  const startOfDay = new Date()
+  startOfDay.setHours(0, 0, 0, 0)
+  const key = `ratelimit:day:${userId}:${dayKey(startOfDay)}`
+  const cached = await cache.get<number>(key)
+  if (typeof cached === "number") return cached
+  const count = await db.searchLog.count({
+    where: { userId, timestamp: { gte: startOfDay } },
+  })
+  await cache.set(key, count, RATE_LIMIT_CACHE_TTL_MS).catch(() => {})
+  return count
+}
+
 /**
  * Check if user has exceeded their rate limit
  */
@@ -49,18 +104,7 @@ export async function checkRateLimit(
 ): Promise<{ allowed: boolean; reason?: string; remaining?: number }> {
   const limits = PLAN_LIMITS[plan]
 
-  // Check monthly limit
-  const startOfMonth = new Date()
-  startOfMonth.setDate(1)
-  startOfMonth.setHours(0, 0, 0, 0)
-
-  const monthlySearches = await db.searchLog.count({
-    where: {
-      userId,
-      timestamp: { gte: startOfMonth },
-    },
-  })
-
+  const monthlySearches = await getMonthlyCount(userId)
   if (monthlySearches >= limits.searchesPerMonth) {
     return {
       allowed: false,
@@ -69,17 +113,7 @@ export async function checkRateLimit(
     }
   }
 
-  // Check daily limit
-  const startOfDay = new Date()
-  startOfDay.setHours(0, 0, 0, 0)
-
-  const dailySearches = await db.searchLog.count({
-    where: {
-      userId,
-      timestamp: { gte: startOfDay },
-    },
-  })
-
+  const dailySearches = await getDailyCount(userId)
   if (dailySearches >= limits.searchesPerDay) {
     return {
       allowed: false,
@@ -115,7 +149,7 @@ export async function checkRateLimit(
 }
 
 /**
- * Get user's current usage statistics
+ * Get user's current usage statistics (uses same cache as checkRateLimit)
  */
 export async function getUserUsage(userId: string): Promise<{
   monthly: { used: number; limit: number; remaining: number }
@@ -131,29 +165,10 @@ export async function getUserUsage(userId: string): Promise<{
   }
 
   const limits = PLAN_LIMITS[user.plan]
-
-  // Monthly usage
-  const startOfMonth = new Date()
-  startOfMonth.setDate(1)
-  startOfMonth.setHours(0, 0, 0, 0)
-
-  const monthlyUsed = await db.searchLog.count({
-    where: {
-      userId,
-      timestamp: { gte: startOfMonth },
-    },
-  })
-
-  // Daily usage
-  const startOfDay = new Date()
-  startOfDay.setHours(0, 0, 0, 0)
-
-  const dailyUsed = await db.searchLog.count({
-    where: {
-      userId,
-      timestamp: { gte: startOfDay },
-    },
-  })
+  const [monthlyUsed, dailyUsed] = await Promise.all([
+    getMonthlyCount(userId),
+    getDailyCount(userId),
+  ])
 
   return {
     monthly: {

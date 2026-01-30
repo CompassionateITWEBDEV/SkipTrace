@@ -2,9 +2,12 @@ import { NextResponse } from "next/server"
 import { db, dbOperation } from "@/lib/db"
 import { getCurrentUser } from "@/lib/auth"
 import { createErrorResponse } from "@/lib/error-handler"
+import { cache } from "@/lib/cache"
 
 // Force dynamic rendering to prevent build-time database calls
 export const dynamic = "force-dynamic"
+
+const ANALYTICS_CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
 
 export async function GET(request: Request) {
   try {
@@ -18,13 +21,17 @@ export async function GET(request: Request) {
     const startDate = new Date()
     startDate.setDate(startDate.getDate() - days)
 
+    const cacheKey = `analytics:${user.id}:${days}:${user.plan === "ENTERPRISE" ? "all" : "own"}`
+    const cached = await cache.get<Record<string, unknown>>(cacheKey)
+    if (cached) {
+      return NextResponse.json(cached)
+    }
+
     // Build where clause - admin can see all, users see only their own
     const where: { timestamp: { gte: Date }; userId?: string } = {
       timestamp: { gte: startDate },
     }
 
-    // For now, users only see their own data
-    // In the future, add admin role check here
     if (user.plan !== "ENTERPRISE") {
       where.userId = user.id
     }
@@ -83,29 +90,31 @@ export async function GET(request: Request) {
       [],
     )
 
-    // Get daily search volume for the last 30 days
-    // Using Prisma's query builder instead of raw SQL for better compatibility
-    const allLogs = await dbOperation(
-      () =>
-        db.searchLog.findMany({
-          where,
-          select: { timestamp: true },
-          orderBy: { timestamp: "desc" },
-        }),
-      [],
-    )
-
-    // Group by date
-    const dailyVolumesMap = new Map<string, number>()
-    allLogs.forEach((log: { timestamp: Date }) => {
-      const date = log.timestamp.toISOString().split("T")[0]
-      dailyVolumesMap.set(date, (dailyVolumesMap.get(date) || 0) + 1)
+    // Get daily search volume via DB aggregation (no in-memory grouping)
+    type DailyRow = { date: Date; count: bigint }
+    const dailyRaw =
+      where.userId != null
+        ? await db.$queryRaw<DailyRow[]>`
+          SELECT date_trunc('day', "timestamp")::date as date, count(*)::bigint as count
+          FROM "SearchLog"
+          WHERE "timestamp" >= ${startDate} AND "userId" = ${where.userId}
+          GROUP BY 1
+          ORDER BY 1 DESC
+          LIMIT 30
+        `
+        : await db.$queryRaw<DailyRow[]>`
+          SELECT date_trunc('day', "timestamp")::date as date, count(*)::bigint as count
+          FROM "SearchLog"
+          WHERE "timestamp" >= ${startDate}
+          GROUP BY 1
+          ORDER BY 1 DESC
+          LIMIT 30
+        `
+    const dailyVolumes = dailyRaw.map((row) => {
+      const d = row.date
+      const dateStr = typeof d === "string" ? d : d instanceof Date ? d.toISOString() : String(d)
+      return { date: dateStr.split("T")[0], count: Number(row.count) }
     })
-
-    const dailyVolumes = Array.from(dailyVolumesMap.entries())
-      .map(([date, count]) => ({ date, count }))
-      .sort((a, b) => b.date.localeCompare(a.date))
-      .slice(0, 30)
 
     // Get search type distribution
     const typeDistribution = searchesByType.reduce(
@@ -135,59 +144,84 @@ export async function GET(request: Request) {
     const totalDataPoints = successfulLogs.reduce((sum: number, log: { resultsCount: number }) => sum + log.resultsCount, 0)
     const avgDataPoints = successfulLogs.length > 0 ? Math.round(totalDataPoints / successfulLogs.length) : 0
 
-    // Get peak usage times (by hour of day)
-    const logsWithTime = await dbOperation(
-      () =>
-        db.searchLog.findMany({
-          where,
-          select: { timestamp: true },
-        }),
-      [],
-    )
-    const hourlyCounts = new Map<number, number>()
-    logsWithTime.forEach((log: { timestamp: Date }) => {
-      const hour = new Date(log.timestamp).getHours()
-      hourlyCounts.set(hour, (hourlyCounts.get(hour) || 0) + 1)
-    })
-    const peakHours = Array.from(hourlyCounts.entries())
-      .map(([hour, count]) => ({ hour, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 5)
+    // Peak hours and success-rate/user-activity trends via raw aggregation
+    type HourRow = { hour: number; count: bigint }
+    type SuccessDayRow = { date: Date; total: bigint; successful: bigint }
+    type UserDayRow = { date: Date; count: bigint }
+    const hourQuery =
+      where.userId != null
+        ? db.$queryRaw<HourRow[]>`
+            SELECT extract(hour from "timestamp")::int as hour, count(*)::bigint as count
+            FROM "SearchLog"
+            WHERE "timestamp" >= ${startDate} AND "userId" = ${where.userId}
+            GROUP BY 1
+            ORDER BY 2 DESC
+            LIMIT 5
+          `
+        : db.$queryRaw<HourRow[]>`
+            SELECT extract(hour from "timestamp")::int as hour, count(*)::bigint as count
+            FROM "SearchLog"
+            WHERE "timestamp" >= ${startDate}
+            GROUP BY 1
+            ORDER BY 2 DESC
+            LIMIT 5
+          `
+    const successDayQuery =
+      where.userId != null
+        ? db.$queryRaw<SuccessDayRow[]>`
+            SELECT date_trunc('day', "timestamp")::date as date, count(*)::bigint as total,
+              sum(case when "success" then 1 else 0 end)::bigint as successful
+            FROM "SearchLog"
+            WHERE "timestamp" >= ${startDate} AND "userId" = ${where.userId}
+            GROUP BY 1
+            ORDER BY 1 DESC
+            LIMIT 30
+          `
+        : db.$queryRaw<SuccessDayRow[]>`
+            SELECT date_trunc('day', "timestamp")::date as date, count(*)::bigint as total,
+              sum(case when "success" then 1 else 0 end)::bigint as successful
+            FROM "SearchLog"
+            WHERE "timestamp" >= ${startDate}
+            GROUP BY 1
+            ORDER BY 1 DESC
+            LIMIT 30
+          `
+    const userDayQuery =
+      where.userId != null
+        ? db.$queryRaw<UserDayRow[]>`
+            SELECT date_trunc('day', "timestamp")::date as date, count(distinct "userId")::bigint as count
+            FROM "SearchLog"
+            WHERE "timestamp" >= ${startDate} AND "userId" = ${where.userId}
+            GROUP BY 1
+            ORDER BY 1 DESC
+            LIMIT 30
+          `
+        : db.$queryRaw<UserDayRow[]>`
+            SELECT date_trunc('day', "timestamp")::date as date, count(distinct "userId")::bigint as count
+            FROM "SearchLog"
+            WHERE "timestamp" >= ${startDate}
+            GROUP BY 1
+            ORDER BY 1 DESC
+            LIMIT 30
+          `
+    const [peakHoursRows, successRateRows, uniqueUsersRows] = await Promise.all([
+      hourQuery,
+      successDayQuery,
+      userDayQuery,
+    ])
+    const toDateStr = (d: unknown) => (typeof d === "string" ? d : d instanceof Date ? d.toISOString() : String(d)).split("T")[0]
+    const peakHours = peakHoursRows.map((r) => ({ hour: r.hour, count: Number(r.count) }))
+    const successRateTrends = successRateRows.map((r) => ({
+      date: toDateStr(r.date),
+      successRate: Number(r.total) > 0 ? Math.round((Number(r.successful) / Number(r.total)) * 100) : 0,
+      total: Number(r.total),
+    }))
+    const uniqueUsersPerDay = uniqueUsersRows.map((r) => ({
+      date: toDateStr(r.date),
+      count: Number(r.count),
+    }))
 
-    // Get success rate trends (by day)
-    const successRateByDay = new Map<string, { total: number; successful: number }>()
-    allLogs.forEach((log: { timestamp: Date; success?: boolean }) => {
-      const date = log.timestamp.toISOString().split("T")[0]
-      const current = successRateByDay.get(date) || { total: 0, successful: 0 }
-      current.total++
-      if (log.success) current.successful++
-      successRateByDay.set(date, current)
-    })
-    const successRateTrends = Array.from(successRateByDay.entries())
-      .map(([date, data]) => ({
-        date,
-        successRate: data.total > 0 ? Math.round((data.successful / data.total) * 100) : 0,
-        total: data.total,
-      }))
-      .sort((a, b) => b.date.localeCompare(a.date))
-      .slice(0, 30)
-
-    // Get user retention metrics (users who searched in multiple days)
-    const userActivityByDay = new Map<string, Set<string>>()
-    allLogs.forEach((log: { timestamp: Date; userId?: string | null }) => {
-      if (!log.userId) return
-      const date = log.timestamp.toISOString().split("T")[0]
-      if (!userActivityByDay.has(date)) {
-        userActivityByDay.set(date, new Set())
-      }
-      userActivityByDay.get(date)?.add(log.userId)
-    })
-    const uniqueUsersPerDay = Array.from(userActivityByDay.entries())
-      .map(([date, users]) => ({ date, count: users.size }))
-      .sort((a, b) => b.date.localeCompare(a.date))
-      .slice(0, 30)
-
-    return NextResponse.json({
+    const payload = {
       totalSearches,
       successfulSearches,
       successRate: Math.round(successRate * 10) / 10, // Round to 1 decimal
@@ -208,7 +242,9 @@ export async function GET(request: Request) {
         startDate: startDate.toISOString(),
         endDate: new Date().toISOString(),
       },
-    })
+    }
+    await cache.set(cacheKey, payload, ANALYTICS_CACHE_TTL_MS)
+    return NextResponse.json(payload)
   } catch (error) {
     console.error("Error fetching analytics:", error)
     return createErrorResponse(error, "Failed to fetch analytics")

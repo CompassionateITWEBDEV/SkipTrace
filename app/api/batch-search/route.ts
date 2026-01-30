@@ -15,119 +15,7 @@ interface BatchSearchItem {
   error?: string
 }
 
-/**
- * Detect the type of search input
- */
-function detectSearchType(input: string): "email" | "phone" | "name" | "unknown" {
-  const trimmed = input.trim()
-
-  // Check if it's an email
-  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
-    return "email"
-  }
-
-  // Check if it's a phone number (digits, may have +, spaces, dashes, parentheses)
-  const phonePattern = /^\+?[\d\s\-().]{10,15}$/
-  if (phonePattern.test(trimmed)) {
-    return "phone"
-  }
-
-  // Check if it looks like a name (has at least one space, mostly letters)
-  const namePattern = /^[a-zA-Z\s]{2,}$/
-  if (namePattern.test(trimmed) && trimmed.includes(" ")) {
-    return "name"
-  }
-
-  return "unknown"
-}
-
-/**
- * Process a single search item
- */
-async function processSearchItem(
-  item: string,
-  _apiKey: string,
-): Promise<{ status: string; results?: unknown; error?: string }> {
-  const type = detectSearchType(item)
-
-  try {
-    switch (type) {
-      case "email": {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/skip-trace`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: item }),
-        })
-
-        if (response.ok) {
-          const data = await response.json()
-          return { status: "success", results: data }
-        } else {
-          const errorData = await response.json()
-          return { status: errorData.error?.includes("not found") ? "not_found" : "error", error: errorData.error }
-        }
-      }
-
-      case "phone": {
-        let cleanedPhone = item.replace(/[\s\-().]/g, "")
-        if (!cleanedPhone.startsWith("+")) {
-          if (cleanedPhone.length === 10) {
-            cleanedPhone = "+1" + cleanedPhone
-          } else {
-            cleanedPhone = "+" + cleanedPhone
-          }
-        }
-
-        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/search-phone`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phone: cleanedPhone }),
-        })
-
-        if (response.ok) {
-          const data = await response.json()
-          return { status: "success", results: data }
-        } else {
-          const errorData = await response.json()
-          return { status: errorData.error?.includes("not found") ? "not_found" : "error", error: errorData.error }
-        }
-      }
-
-      case "name": {
-        const nameParts = item.trim().split(/\s+/)
-        const firstName = nameParts[0]
-        const lastName = nameParts.slice(1).join(" ")
-
-        if (!firstName || !lastName) {
-          return { status: "error", error: "Invalid name format. Please provide first and last name." }
-        }
-
-        const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/search-name`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ firstName, lastName }),
-        })
-
-        if (response.ok) {
-          const data = await response.json()
-          return { status: "success", results: data }
-        } else {
-          const errorData = await response.json()
-          return { status: errorData.error?.includes("not found") ? "not_found" : "error", error: errorData.error }
-        }
-      }
-
-      default:
-        return { status: "error", error: "Unable to determine search type. Please use email, phone, or name format." }
-    }
-  } catch (error) {
-    console.error(`Error processing search item "${item}":`, error)
-    return {
-      status: "error",
-      error: error instanceof Error ? error.message : "Unknown error occurred",
-    }
-  }
-}
+import { detectSearchType, runOneSearch } from "@/lib/batch-search-runner"
 
 export async function POST(request: NextRequest) {
   try {
@@ -183,7 +71,7 @@ export async function POST(request: NextRequest) {
         const batch = validInputs.slice(i, i + concurrency)
         const batchPromises = batch.map(async (input: string) => {
           const type = detectSearchType(input)
-          const result = await processSearchItem(input, apiKey)
+          const result = await runOneSearch(input)
           return {
             input,
             type,

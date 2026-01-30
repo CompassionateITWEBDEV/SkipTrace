@@ -121,10 +121,27 @@ export async function POST(request: NextRequest) {
     const breachCheck = breachData as { breached: boolean; breachCount?: number; breaches?: unknown[]; error?: string } | null
     const reputationCheck = emailReputation as { deliverable: boolean; riskScore?: number; domain?: string; suggestions?: string[] } | null
 
+    // Optional confidence score (0–100) based on data completeness
+    let confidenceScore: number | undefined
+    if (skipTraceData && typeof skipTraceData === "object") {
+      const st = skipTraceData as { person?: { names?: unknown[]; emails?: unknown[]; phones?: unknown[]; addresses?: unknown[] } }
+      const p = st.person
+      if (p) {
+        let score = 0
+        if (Array.isArray(p.names) && p.names.length > 0) score += 25
+        if (Array.isArray(p.emails) && p.emails.length > 0) score += 25
+        if (Array.isArray(p.phones) && p.phones.length > 0) score += 25
+        if (Array.isArray(p.addresses) && p.addresses.length > 0) score += 25
+        if (socialData && typeof socialData === "object" && Object.keys(socialData).length > 0) score = Math.min(100, score + 15)
+        confidenceScore = score
+      }
+    }
+
     const responseData = {
       skipTrace: skipTraceData,
       socialMedia: socialData,
       email: email,
+      ...(confidenceScore !== undefined && { confidenceScore }),
       emailHealth: {
         ...(breachCheck && !breachCheck.error && { breachCheck }),
         ...(reputationCheck && { reputation: reputationCheck }),

@@ -4,6 +4,7 @@
 import { Worker } from "bullmq"
 import { BATCH_SEARCH_QUEUE } from "../lib/queue"
 import { db } from "../lib/db"
+import { runOneSearch } from "../lib/batch-search-runner"
 import type { Prisma } from "@prisma/client"
 
 const redisHost = process.env.REDIS_HOST || "localhost"
@@ -64,36 +65,18 @@ const batchSearchWorker = new Worker(
 
       const batchPromises = batch.map(async (input: string) => {
         try {
-          // Determine search type and call appropriate API
-          // This is a simplified version - in production, use the actual search APIs
-          const response = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/batch-search`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ inputs: [input], maxConcurrency: 1 }),
-          })
-
-          if (response.ok) {
-            const data = await response.json()
-            const result = data.results?.[0]
-            if (result?.status === "success") {
-              successCount++
-            } else {
-              errorCount++
-            }
-            results.push({
-              input,
-              status: result?.status || "error",
-              results: result?.results,
-              error: result?.error,
-            })
+          const result = await runOneSearch(input)
+          if (result.status === "success") {
+            successCount++
           } else {
             errorCount++
-            results.push({
-              input,
-              status: "error",
-              error: "API request failed",
-            })
           }
+          results.push({
+            input,
+            status: result.status,
+            results: result.results,
+            error: result.error,
+          })
         } catch (error) {
           errorCount++
           results.push({

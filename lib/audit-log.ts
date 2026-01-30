@@ -102,3 +102,67 @@ export async function logDataDeletion(
     details: { reason },
   })
 }
+
+/**
+ * Log login attempt (success or failure). Call from auth flow.
+ */
+export async function logLoginAttempt(
+  userId: string | undefined,
+  email: string,
+  success: boolean,
+  ipAddress?: string,
+): Promise<void> {
+  await logAuditEvent({
+    userId,
+    action: success ? "login_success" : "login_failure",
+    resource: "auth",
+    resourceId: undefined,
+    details: { email, success },
+    ipAddress,
+  })
+}
+
+/**
+ * Log admin action (e.g. plan change, user update).
+ */
+export async function logAdminAction(
+  adminUserId: string,
+  action: string,
+  resource: string,
+  resourceId: string,
+  details?: Record<string, unknown>,
+): Promise<void> {
+  await logAuditEvent({
+    userId: adminUserId,
+    action,
+    resource,
+    resourceId,
+    details,
+  })
+}
+
+/**
+ * Log data export (compliance).
+ */
+export async function logDataExport(userId: string, details?: Record<string, unknown>): Promise<void> {
+  await logAuditEvent({
+    userId,
+    action: "data_export",
+    resource: "compliance",
+    resourceId: userId,
+    details,
+  })
+}
+
+/**
+ * Log account deletion (full account closure).
+ */
+export async function logAccountDeletion(userId: string, email: string): Promise<void> {
+  await logAuditEvent({
+    userId,
+    action: "account_deletion",
+    resource: "compliance",
+    resourceId: userId,
+    details: { email },
+  })
+}

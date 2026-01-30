@@ -1,6 +1,7 @@
 // Utility for logging searches to the database
 
 import { db } from "./db"
+import { invalidateUsageCache } from "./rate-limit"
 
 type SearchType = "EMAIL" | "PHONE" | "NAME" | "ADDRESS" | "COMPREHENSIVE" | "BATCH"
 
@@ -30,6 +31,9 @@ export async function logSearch(params: LogSearchParams): Promise<void> {
         error: params.error || null,
       },
     })
+    if (params.userId) {
+      await invalidateUsageCache(params.userId)
+    }
   } catch (error) {
     // Don't throw - logging failures shouldn't break the search
     console.error("Failed to log search:", error)

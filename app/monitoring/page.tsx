@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useEffect, useState } from "react"
 import { Bell, Plus, Trash2, Clock, CheckCircle2, XCircle } from "lucide-react"
+import { toast } from "sonner"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,6 +17,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
 interface MonitoringSubscription {
   id: string
@@ -44,15 +47,34 @@ export default function MonitoringPage() {
   const [unreadCount, setUnreadCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [showNewModal, setShowNewModal] = useState(false)
+  const [newTargetType, setNewTargetType] = useState<"email" | "phone" | "name">("email")
+  const [newTargetValue, setNewTargetValue] = useState("")
+  const [newFrequency, setNewFrequency] = useState("weekly")
+  const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
     fetchSubscriptions()
     fetchNotifications()
-    // Poll for new notifications every 30 seconds
-    const interval = setInterval(() => {
-      fetchNotifications()
-    }, 30000)
-    return () => clearInterval(interval)
+    // Prefer SSE for live updates; fall back to 30s polling
+    let sse: EventSource | null = null
+    if (typeof EventSource !== "undefined") {
+      try {
+        sse = new EventSource("/api/notifications/stream")
+        sse.addEventListener("refresh", () => fetchNotifications())
+        sse.onerror = () => {
+          sse?.close()
+          sse = null
+        }
+      } catch {
+        // Fall through to polling
+      }
+    }
+    const interval = setInterval(() => fetchNotifications(), 30000)
+    return () => {
+      clearInterval(interval)
+      sse?.close()
+    }
   }, [])
 
   async function fetchSubscriptions() {
@@ -91,9 +113,88 @@ export default function MonitoringPage() {
       })
       if (response.ok) {
         await fetchNotifications()
+        toast.success("Marked as read")
       }
     } catch (error) {
       console.error("Failed to mark notification as read:", error)
+      toast.error("Failed to mark as read")
+    }
+  }
+
+  async function markAllNotificationsRead() {
+    try {
+      const response = await fetch("/api/notifications", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ markAllRead: true }),
+      })
+      if (response.ok) {
+        await fetchNotifications()
+        toast.success("All notifications marked as read")
+      }
+    } catch (error) {
+      console.error("Failed to mark all as read:", error)
+      toast.error("Failed to mark all as read")
+    }
+  }
+
+  async function deleteNotification(id: string) {
+    try {
+      const response = await fetch(`/api/notifications?id=${id}`, { method: "DELETE" })
+      if (response.ok) {
+        await fetchNotifications()
+        toast.success("Notification deleted")
+      }
+    } catch (error) {
+      console.error("Failed to delete notification:", error)
+      toast.error("Failed to delete notification")
+    }
+  }
+
+  async function deleteAllReadNotifications() {
+    try {
+      const response = await fetch("/api/notifications?deleteAllRead=true", { method: "DELETE" })
+      if (response.ok) {
+        await fetchNotifications()
+        toast.success("Read notifications deleted")
+      }
+    } catch (error) {
+      console.error("Failed to delete read notifications:", error)
+      toast.error("Failed to delete read notifications")
+    }
+  }
+
+  async function handleCreateSubscription() {
+    const targetValue = newTargetValue.trim()
+    if (!targetValue) {
+      toast.error("Please enter a value to monitor")
+      return
+    }
+    setSubmitting(true)
+    try {
+      const response = await fetch("/api/monitoring", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetType: newTargetType,
+          targetValue,
+          frequency: newFrequency,
+        }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (response.ok) {
+        setShowNewModal(false)
+        setNewTargetValue("")
+        await fetchSubscriptions()
+        toast.success("Monitoring subscription created")
+      } else {
+        toast.error(data.error || "Failed to create subscription")
+      }
+    } catch (error) {
+      console.error("Failed to create subscription:", error)
+      toast.error("Failed to create subscription")
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -105,9 +206,11 @@ export default function MonitoringPage() {
       if (response.ok) {
         await fetchSubscriptions()
         setDeleteId(null)
+        toast.success("Subscription deleted")
       }
     } catch (error) {
       console.error("Failed to delete subscription:", error)
+      toast.error("Failed to delete subscription")
     }
   }
 
@@ -124,7 +227,7 @@ export default function MonitoringPage() {
               Track changes to individuals and receive alerts when new information is found
             </p>
           </div>
-          <Button>
+          <Button onClick={() => setShowNewModal(true)}>
             <Plus className="mr-2 h-4 w-4" />
             New Subscription
           </Button>
@@ -263,28 +366,25 @@ export default function MonitoringPage() {
                 </Card>
               ) : (
                 <>
-                  <div className="flex items-center justify-between mb-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                     <h2 className="text-lg font-semibold">Recent Notifications</h2>
-                    {unreadCount > 0 && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={async () => {
-                          try {
-                            await fetch("/api/notifications", {
-                              method: "PATCH",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ markAllRead: true }),
-                            })
-                            await fetchNotifications()
-                          } catch (error) {
-                            console.error("Failed to mark all as read:", error)
-                          }
-                        }}
-                      >
-                        Mark all as read
-                      </Button>
-                    )}
+                    <div className="flex gap-2">
+                      {unreadCount > 0 && (
+                        <Button variant="outline" size="sm" onClick={markAllNotificationsRead}>
+                          Mark all as read
+                        </Button>
+                      )}
+                      {notifications.some((n) => n.read) && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={deleteAllReadNotifications}
+                          className="text-muted-foreground"
+                        >
+                          Delete read
+                        </Button>
+                      )}
+                    </div>
                   </div>
                   {notifications.map((notification) => {
                     const changes = notification.type === "monitoring_alert" && notification.metadata?.changes && Array.isArray(notification.metadata.changes) 
@@ -306,15 +406,25 @@ export default function MonitoringPage() {
                                 {new Date(notification.createdAt).toLocaleString()}
                               </CardDescription>
                             </div>
-                            {!notification.read && (
+                            <div className="flex gap-1">
+                              {!notification.read && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => markNotificationRead(notification.id)}
+                                >
+                                  Mark read
+                                </Button>
+                              )}
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => markNotificationRead(notification.id)}
+                                onClick={() => deleteNotification(notification.id)}
+                                className="text-muted-foreground hover:text-destructive"
                               >
-                                Mark read
+                                <Trash2 className="h-4 w-4" />
                               </Button>
-                            )}
+                            </div>
                           </div>
                         </CardHeader>
                         <CardContent>
@@ -356,6 +466,60 @@ export default function MonitoringPage() {
               >
                 Delete
               </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog open={showNewModal} onOpenChange={setShowNewModal}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>New Monitoring Subscription</AlertDialogTitle>
+              <AlertDialogDescription>
+                Monitor an email, phone, or name for changes. We&apos;ll check periodically and notify you when we find updates.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="new-target-type">Type</Label>
+                <select
+                  id="new-target-type"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  value={newTargetType}
+                  onChange={(e) => setNewTargetType(e.target.value as "email" | "phone" | "name")}
+                >
+                  <option value="email">Email</option>
+                  <option value="phone">Phone</option>
+                  <option value="name">Name</option>
+                </select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="new-target-value">Value</Label>
+                <Input
+                  id="new-target-value"
+                  placeholder={newTargetType === "email" ? "user@example.com" : newTargetType === "phone" ? "+1 555 123 4567" : "John Smith"}
+                  value={newTargetValue}
+                  onChange={(e) => setNewTargetValue(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="new-frequency">Check frequency</Label>
+                <select
+                  id="new-frequency"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  value={newFrequency}
+                  onChange={(e) => setNewFrequency(e.target.value)}
+                >
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                </select>
+              </div>
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={submitting}>Cancel</AlertDialogCancel>
+              <Button onClick={handleCreateSubscription} disabled={submitting}>
+                {submitting ? "Creating..." : "Create"}
+              </Button>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>

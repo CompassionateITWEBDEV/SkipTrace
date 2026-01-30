@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth"
 import { db, dbOperation } from "@/lib/db"
-import { logDataDeletion, logAuditEvent } from "@/lib/audit-log"
+import { logDataDeletion, logAuditEvent, logAccountDeletion } from "@/lib/audit-log"
 import { createErrorResponse } from "@/lib/error-handler"
 
 // Force dynamic rendering to prevent build-time database calls
@@ -9,12 +9,19 @@ export const dynamic = "force-dynamic"
 
 /**
  * GDPR/CCPA Data Deletion Request
- * Allows users to request deletion of their personal data
+ * Allows users to request deletion of their personal data.
+ * Optionally set deleteAccount: true in the body to also close the account (delete the user record).
+ * Without deleteAccount, only associated data is removed; the account remains for retention purposes if required.
  */
 export async function POST(request: Request) {
   try {
     const sessionUser = await requireAuth()
-    const { dataType, reason } = await request.json()
+    const body = await request.json().catch(() => ({}))
+    const { dataType, reason, deleteAccount } = body as {
+      dataType?: string
+      reason?: string
+      deleteAccount?: boolean
+    }
 
     // Fetch full user from database to get createdAt
     const user = await db.user.findUnique({
@@ -55,17 +62,42 @@ export async function POST(request: Request) {
       where: { userId: user.id },
     })
 
-    // Note: We don't delete the user account itself, just the associated data
-    // The user account may need to be kept for legal/compliance reasons
+    // Delete notifications
+    await db.notification.deleteMany({
+      where: { userId: user.id },
+    })
+
+    // Optionally delete the user account (full account closure)
+    if (deleteAccount === true) {
+      await logAccountDeletion(user.id, user.email).catch(() => {})
+      await db.batchJob.updateMany({ where: { userId: user.id }, data: { userId: null } })
+      await db.user.delete({
+        where: { id: user.id },
+      })
+      return NextResponse.json({
+        message: "Account and all associated data have been permanently deleted",
+        deleted: {
+          searchLogs: true,
+          savedSearches: true,
+          reports: true,
+          monitoringSubscriptions: true,
+          apiKeys: true,
+          notifications: true,
+          account: true,
+        },
+        deletedAt: new Date().toISOString(),
+      })
+    }
 
     return NextResponse.json({
-      message: "Data deletion request processed",
+      message: "Data deletion request processed (account retained)",
       deleted: {
         searchLogs: true,
         savedSearches: true,
         reports: true,
         monitoringSubscriptions: true,
         apiKeys: true,
+        notifications: true,
       },
       deletedAt: new Date().toISOString(),
     })

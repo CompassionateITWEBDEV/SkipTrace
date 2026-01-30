@@ -26,7 +26,14 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 })
     }
 
-    return NextResponse.json({ report })
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"
+    const shareUrl = report.sharedToken ? `${baseUrl}/reports/shared/${report.sharedToken}` : undefined
+    return NextResponse.json({
+      report: {
+        ...report,
+        ...(shareUrl && { shareUrl }),
+      },
+    })
   } catch (error) {
     console.error("Error fetching report:", error)
     return NextResponse.json({ error: "Failed to fetch report" }, { status: 500 })

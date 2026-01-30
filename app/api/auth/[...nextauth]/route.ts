@@ -3,6 +3,7 @@ import CredentialsProvider from "next-auth/providers/credentials"
 import type { User } from "next-auth"
 import { db } from "@/lib/db"
 import { compare } from "bcryptjs"
+import { getClientIdentifier, checkAuthRateLimit } from "@/lib/auth-rate-limit"
 
 // Force dynamic rendering to prevent build-time database calls
 export const dynamic = "force-dynamic"
@@ -70,4 +71,36 @@ export const authOptions: NextAuthOptions = {
 
 const handler = NextAuth(authOptions)
 
-export { handler as GET, handler as POST }
+async function withAuthRateLimit(
+  req: Request,
+  handlerFn: (req: Request) => Promise<Response>,
+): Promise<Response> {
+  if (req.method !== "POST") {
+    return handlerFn(req)
+  }
+  const identifier = getClientIdentifier(req)
+  const { allowed } = await checkAuthRateLimit(identifier)
+  if (!allowed) {
+    return new Response(
+      JSON.stringify({
+        error: "Too many sign-in attempts. Please try again in 15 minutes.",
+      }),
+      {
+        status: 429,
+        headers: {
+          "Content-Type": "application/json",
+          "X-RateLimit-Remaining": "0",
+        },
+      },
+    )
+  }
+  return handlerFn(req)
+}
+
+export async function GET(req: Request, context: unknown) {
+  return handler(req as never, context as never)
+}
+
+export async function POST(req: Request, context: unknown) {
+  return withAuthRateLimit(req, (r) => handler(r as never, context as never))
+}

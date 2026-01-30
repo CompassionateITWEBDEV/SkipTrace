@@ -13,74 +13,60 @@ interface Plan {
   price: string
   description: string
   features: string[]
-  limits: {
-    searchesPerMonth: number
-    searchesPerDay: number
-    batchSize: number
-  }
+  popular?: boolean
   icon: React.ReactNode
 }
 
+// Same plans, prices, and offers as pricing page
 const plans: Plan[] = [
   {
     id: "STARTER",
     name: "Starter",
-    price: "$29",
-    description: "Perfect for individual investigators",
+    price: "$49",
+    description: "Perfect for individuals and small teams",
     features: [
-      "500 searches per month",
-      "50 searches per day",
-      "Batch processing (up to 100 items)",
+      "100 searches per month",
+      "Email & name search",
+      "Basic phone lookup",
+      "Social media detection (10 platforms)",
       "Email support",
-      "API access",
+      "Export to CSV",
     ],
-    limits: {
-      searchesPerMonth: 500,
-      searchesPerDay: 50,
-      batchSize: 100,
-    },
     icon: <Zap className="h-6 w-6" />,
   },
   {
     id: "PROFESSIONAL",
     name: "Professional",
-    price: "$99",
-    description: "For teams and agencies",
+    price: "$149",
+    description: "For growing businesses and agencies",
+    popular: true,
     features: [
-      "5,000 searches per month",
-      "500 searches per day",
-      "Batch processing (up to 1,000 items)",
+      "500 searches per month",
+      "All search types",
+      "Advanced phone validation",
+      "Social media detection (48+ platforms)",
       "Priority support",
-      "Advanced API access",
-      "Monitoring subscriptions",
+      "API access",
+      "Export to CSV & PDF",
+      "Relationship monitoring",
     ],
-    limits: {
-      searchesPerMonth: 5000,
-      searchesPerDay: 500,
-      batchSize: 1000,
-    },
     icon: <Building2 className="h-6 w-6" />,
   },
   {
     id: "ENTERPRISE",
     name: "Enterprise",
     price: "Custom",
-    description: "For large organizations",
+    description: "For large organizations with custom needs",
     features: [
-      "100,000+ searches per month",
-      "10,000 searches per day",
-      "Unlimited batch processing",
-      "Dedicated support",
+      "Unlimited searches",
+      "All features included",
+      "Dedicated account manager",
       "Custom integrations",
-      "Advanced monitoring",
       "SLA guarantee",
-      "Custom reporting",
+      "White-label options",
+      "Advanced analytics",
+      "Priority API access",
     ],
-    limits: {
-      searchesPerMonth: 100000,
-      searchesPerDay: 10000,
-      batchSize: 10000,
-    },
     icon: <Crown className="h-6 w-6" />,
   },
 ]
@@ -109,7 +95,13 @@ export default function BillingPage() {
     }
   }
 
+  const contactEmail = process.env.NEXT_PUBLIC_CONTACT_EMAIL || "sales@example.com"
+
   async function handleUpgrade(planId: string) {
+    if (planId === "ENTERPRISE") {
+      window.location.href = `mailto:${contactEmail}?subject=SkipTrace Enterprise - Custom pricing`
+      return
+    }
     try {
       setError(null)
       const response = await fetch("/api/billing/checkout", {
@@ -121,7 +113,6 @@ export default function BillingPage() {
       if (response.ok) {
         const data = await response.json()
         if (data.checkoutUrl) {
-          // In production, redirect to Stripe Checkout
           window.location.href = data.checkoutUrl
         } else {
           setError("Checkout URL not available. Please contact support.")
@@ -165,8 +156,13 @@ export default function BillingPage() {
               return (
                 <Card
                   key={plan.id}
-                  className={`relative ${isCurrentPlan ? "border-primary border-2" : ""}`}
+                  className={`relative ${isCurrentPlan ? "border-primary border-2" : ""} ${plan.popular ? "border-primary shadow-lg" : ""}`}
                 >
+                  {plan.popular && !isCurrentPlan && (
+                    <div className="bg-primary text-primary-foreground text-center py-2 text-sm font-semibold rounded-t-lg">
+                      Most Popular
+                    </div>
+                  )}
                   {isCurrentPlan && (
                     <Badge className="absolute -top-3 left-1/2 -translate-x-1/2">Current Plan</Badge>
                   )}
@@ -176,7 +172,7 @@ export default function BillingPage() {
                       <CardTitle>{plan.name}</CardTitle>
                     </div>
                     <div className="text-3xl font-bold">{plan.price}</div>
-                    {plan.price !== "Custom" && <div className="text-sm text-muted-foreground">per month</div>}
+                    {plan.price !== "Custom" && <div className="text-sm text-muted-foreground">/month</div>}
                     <CardDescription>{plan.description}</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">

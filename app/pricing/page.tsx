@@ -1,6 +1,9 @@
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Check } from "lucide-react"
+import { PricingCta } from "@/components/pricing-cta"
+
+const CONTACT_EMAIL = process.env.NEXT_PUBLIC_CONTACT_EMAIL || "sales@example.com"
 
 export const metadata = {
   title: "Pricing - SkipTrace Pro",
@@ -87,12 +90,11 @@ export default function PricingPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                <Button
-                  className="w-full mb-6"
-                  variant={plan.popular ? "default" : "outline"}
-                >
-                  {plan.price === "Custom" ? "Contact Sales" : "Get Started"}
-                </Button>
+                <PricingCta
+                  planName={plan.name}
+                  price={plan.price}
+                  popular={plan.popular}
+                />
                 <ul className="space-y-3">
                   {plan.features.map((feature, idx) => (
                     <li key={idx} className="flex items-start gap-2">
@@ -111,7 +113,11 @@ export default function PricingPage() {
           <p className="text-muted-foreground mb-6">
             Contact our sales team for enterprise pricing and custom integrations
           </p>
-          <Button size="lg">Contact Sales</Button>
+          <Button size="lg" asChild>
+            <a href={`mailto:${CONTACT_EMAIL}?subject=SkipTrace Enterprise - Custom pricing`}>
+              Contact Sales
+            </a>
+          </Button>
         </div>
       </div>
     </main>

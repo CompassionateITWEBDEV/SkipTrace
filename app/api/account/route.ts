@@ -40,3 +40,33 @@ export async function GET() {
     return createErrorResponse(error, "Failed to fetch account information")
   }
 }
+
+/**
+ * Update current user profile (name only; email is read-only).
+ */
+export async function PATCH(request: Request) {
+  try {
+    const user = await requireAuth()
+    const body = await request.json().catch(() => ({}))
+    const { name } = body as { name?: string }
+
+    const updated = await dbOperation(
+      () =>
+        db.user.update({
+          where: { id: user.id },
+          data: { name: name != null ? String(name).trim() || null : undefined },
+          select: { id: true, email: true, name: true, plan: true },
+        }),
+      null,
+    )
+
+    if (!updated) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 })
+    }
+
+    return NextResponse.json(updated)
+  } catch (error) {
+    console.error("Error updating account:", error)
+    return createErrorResponse(error, "Failed to update profile")
+  }
+}

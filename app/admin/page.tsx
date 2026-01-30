@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Users, Search, Activity, Shield, Loader2, AlertCircle } from "lucide-react"
@@ -19,6 +20,15 @@ export default function AdminPage() {
     activeUsers: number
     systemHealth: string
   } | null>(null)
+  const [users, setUsers] = useState<Array<{ id: string; email: string; name: string | null; plan: string; role: string; createdAt: string }>>([])
+  const [usersLoading, setUsersLoading] = useState(false)
+  const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
+  const [health, setHealth] = useState<{
+    status: string
+    latencyMs?: number
+    services?: { database?: { status: string; responseTime?: number }; redis?: { status: string; responseTime?: number }; queues?: { batch?: { waiting: number; active: number }; monitoring?: { waiting: number; active: number } } }
+  } | null>(null)
+  const [healthLoading, setHealthLoading] = useState(false)
 
   const checkAdminAccess = useCallback(async () => {
     try {
@@ -64,6 +74,55 @@ export default function AdminPage() {
       console.error("Error fetching admin stats:", error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchUsers = async () => {
+    setUsersLoading(true)
+    try {
+      const response = await fetch("/api/admin/users?limit=50")
+      if (response.ok) {
+        const data = await response.json()
+        setUsers(data.users || [])
+      }
+    } catch (error) {
+      console.error("Error fetching users:", error)
+    } finally {
+      setUsersLoading(false)
+    }
+  }
+
+  const fetchHealth = async () => {
+    setHealthLoading(true)
+    try {
+      const response = await fetch("/api/health")
+      if (response.ok) {
+        const data = await response.json()
+        setHealth(data)
+      }
+    } catch (error) {
+      console.error("Error fetching health:", error)
+    } finally {
+      setHealthLoading(false)
+    }
+  }
+
+  const updateUserPlan = async (userId: string, plan: string) => {
+    setUpdatingUserId(userId)
+    try {
+      const response = await fetch(`/api/admin/users/${userId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan }),
+      })
+      if (response.ok) {
+        const updated = await response.json()
+        setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, plan: updated.plan } : u)))
+      }
+    } catch (error) {
+      console.error("Error updating user plan:", error)
+    } finally {
+      setUpdatingUserId(null)
     }
   }
 
@@ -186,12 +245,54 @@ export default function AdminPage() {
             <Card>
               <CardHeader>
                 <CardTitle>User Management</CardTitle>
-                <CardDescription>Manage user accounts and permissions</CardDescription>
+                <CardDescription>View users and adjust plan (support)</CardDescription>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  User management interface coming soon. This will allow admins to view, edit, and manage user accounts.
-                </p>
+                <Button variant="outline" size="sm" onClick={fetchUsers} disabled={usersLoading} className="mb-4">
+                  {usersLoading ? "Loading…" : "Load users"}
+                </Button>
+                {users.length > 0 && (
+                  <div className="rounded-md border overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b bg-muted/50">
+                          <th className="text-left p-3">Email</th>
+                          <th className="text-left p-3">Name</th>
+                          <th className="text-left p-3">Plan</th>
+                          <th className="text-left p-3">Role</th>
+                          <th className="text-left p-3">Created</th>
+                          <th className="text-left p-3">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {users.map((u) => (
+                          <tr key={u.id} className="border-b">
+                            <td className="p-3 font-mono text-xs">{u.email}</td>
+                            <td className="p-3">{u.name || "—"}</td>
+                            <td className="p-3">
+                              <Badge variant="secondary">{u.plan}</Badge>
+                            </td>
+                            <td className="p-3">{u.role}</td>
+                            <td className="p-3 text-muted-foreground">{new Date(u.createdAt).toLocaleDateString()}</td>
+                            <td className="p-3">
+                              <select
+                                className="rounded border bg-background px-2 py-1 text-sm"
+                                value={u.plan}
+                                disabled={updatingUserId === u.id}
+                                onChange={(e) => updateUserPlan(u.id, e.target.value)}
+                              >
+                                <option value="FREE">FREE</option>
+                                <option value="STARTER">STARTER</option>
+                                <option value="PROFESSIONAL">PROFESSIONAL</option>
+                                <option value="ENTERPRISE">ENTERPRISE</option>
+                              </select>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -199,13 +300,64 @@ export default function AdminPage() {
           <TabsContent value="system" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle>System Settings</CardTitle>
-                <CardDescription>Configure system-wide settings</CardDescription>
+                <CardTitle>Health Dashboard</CardTitle>
+                <CardDescription>Database, Redis, and queue status</CardDescription>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  System configuration interface coming soon.
-                </p>
+                <Button variant="outline" size="sm" onClick={fetchHealth} disabled={healthLoading} className="mb-4">
+                  {healthLoading ? "Loading…" : "Refresh health"}
+                </Button>
+                {health && (
+                  <div className="space-y-4 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">Overall:</span>
+                      <Badge variant={health.status === "healthy" ? "default" : health.status === "degraded" ? "secondary" : "destructive"}>
+                        {health.status}
+                      </Badge>
+                      {health.latencyMs != null && (
+                        <span className="text-muted-foreground">({health.latencyMs}ms)</span>
+                      )}
+                    </div>
+                    {health.services?.database && (
+                      <div>
+                        <span className="font-medium">Database: </span>
+                        <Badge variant={health.services.database.status === "up" ? "default" : "destructive"}>
+                          {health.services.database.status}
+                        </Badge>
+                        {health.services.database.responseTime != null && (
+                          <span className="text-muted-foreground ml-2">{health.services.database.responseTime}ms</span>
+                        )}
+                      </div>
+                    )}
+                    {health.services?.redis && (
+                      <div>
+                        <span className="font-medium">Redis: </span>
+                        <Badge variant={health.services.redis.status === "up" ? "default" : "destructive"}>
+                          {health.services.redis.status}
+                        </Badge>
+                        {health.services.redis.responseTime != null && (
+                          <span className="text-muted-foreground ml-2">{health.services.redis.responseTime}ms</span>
+                        )}
+                      </div>
+                    )}
+                    {health.services?.queues && (
+                      <div className="pt-2 border-t">
+                        <span className="font-medium">Queues:</span>
+                        <ul className="mt-2 space-y-1 text-muted-foreground">
+                          {health.services.queues.batch && (
+                            <li>Batch: waiting {health.services.queues.batch.waiting}, active {health.services.queues.batch.active}</li>
+                          )}
+                          {health.services.queues.monitoring && (
+                            <li>Monitoring: waiting {health.services.queues.monitoring.waiting}, active {health.services.queues.monitoring.active}</li>
+                          )}
+                          {!health.services.queues.batch && !health.services.queues.monitoring && (
+                            <li>No queue data (Redis may be down or queues not configured)</li>
+                          )}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

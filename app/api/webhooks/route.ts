@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { requireAuth } from "@/lib/auth"
+import { db } from "@/lib/db"
 import { createErrorResponse, ValidationError } from "@/lib/error-handler"
+import { randomBytes } from "crypto"
 
 // Force dynamic rendering to prevent build-time database calls
 export const dynamic = "force-dynamic"
@@ -8,13 +10,23 @@ export const dynamic = "force-dynamic"
 /**
  * Get user's webhook configurations
  */
-export async function GET(_request: Request) {
+export async function GET() {
   try {
-    await requireAuth()
-    
-    // For now, return empty array - webhook storage can be added to schema later
-    // In production, query webhook configurations from database
-    return NextResponse.json({ webhooks: [] })
+    const user = await requireAuth()
+
+    const webhooks = await db.webhook.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        url: true,
+        events: true,
+        active: true,
+        createdAt: true,
+      },
+    })
+
+    return NextResponse.json({ webhooks })
   } catch (error) {
     console.error("Error fetching webhooks:", error)
     return createErrorResponse(error, "Failed to fetch webhooks")
@@ -22,13 +34,13 @@ export async function GET(_request: Request) {
 }
 
 /**
- * Create or update a webhook configuration
+ * Create a new webhook configuration
  */
 export async function POST(request: Request) {
   try {
-    await requireAuth()
+    const user = await requireAuth()
     const body = await request.json()
-    const { url, events, secret: _secret } = body
+    const { url, events, secret } = body
 
     if (!url || typeof url !== "string") {
       throw new ValidationError("Webhook URL is required")
@@ -38,25 +50,43 @@ export async function POST(request: Request) {
       throw new ValidationError("At least one event type is required")
     }
 
-    // Validate URL format
     try {
       new URL(url)
     } catch {
       throw new ValidationError("Invalid webhook URL format")
     }
 
-    // In production, store webhook configuration in database
-    // For now, return success
-    return NextResponse.json({
-      success: true,
-      message: "Webhook configuration saved",
-      webhook: {
-        id: `wh_${Date.now()}`,
-        url,
-        events,
+    const secretToStore =
+      typeof secret === "string" && secret.trim().length > 0
+        ? secret.trim()
+        : randomBytes(32).toString("base64url")
+
+    const webhook = await db.webhook.create({
+      data: {
+        userId: user.id,
+        url: url.trim(),
+        secret: secretToStore,
+        events: events.map((e: unknown) => String(e)),
         active: true,
       },
-    }, { status: 201 })
+      select: {
+        id: true,
+        url: true,
+        events: true,
+        active: true,
+        createdAt: true,
+      },
+    })
+
+    return NextResponse.json(
+      {
+        success: true,
+        message: "Webhook configuration saved",
+        webhook,
+        secret: secretToStore,
+      },
+      { status: 201 },
+    )
   } catch (error) {
     console.error("Error creating webhook:", error)
     return createErrorResponse(error, "Failed to create webhook")
@@ -68,7 +98,7 @@ export async function POST(request: Request) {
  */
 export async function DELETE(request: Request) {
   try {
-    await requireAuth()
+    const user = await requireAuth()
     const { searchParams } = new URL(request.url)
     const webhookId = searchParams.get("id")
 
@@ -76,7 +106,18 @@ export async function DELETE(request: Request) {
       throw new ValidationError("Webhook ID is required")
     }
 
-    // In production, delete from database
+    const webhook = await db.webhook.findFirst({
+      where: { id: webhookId, userId: user.id },
+    })
+
+    if (!webhook) {
+      return NextResponse.json({ error: "Webhook not found" }, { status: 404 })
+    }
+
+    await db.webhook.delete({
+      where: { id: webhookId },
+    })
+
     return NextResponse.json({ message: "Webhook deleted" })
   } catch (error) {
     console.error("Error deleting webhook:", error)

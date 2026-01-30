@@ -24,15 +24,20 @@ interface AnalyticsData {
   userActivityTrends?: Array<{ date: string; count: number }>
 }
 
+const DAY_OPTIONS = [7, 14, 30] as const
+
 export default function AnalyticsPage() {
   const [data, setData] = useState<AnalyticsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [days, setDays] = useState<number>(30)
 
   useEffect(() => {
     async function fetchAnalytics() {
+      setLoading(true)
+      setError(null)
       try {
-        const response = await fetch("/api/analytics/stats?days=30")
+        const response = await fetch(`/api/analytics/stats?days=${days}`)
         if (response.ok) {
           const analyticsData = await response.json()
           setData(analyticsData)
@@ -49,7 +54,7 @@ export default function AnalyticsPage() {
     }
 
     fetchAnalytics()
-  }, [])
+  }, [days])
   return (
     <main className="min-h-screen bg-background">
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -60,7 +65,18 @@ export default function AnalyticsPage() {
               Track your search performance, usage statistics, and investigation insights
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-muted-foreground">Period:</span>
+            {DAY_OPTIONS.map((d) => (
+              <Button
+                key={d}
+                variant={days === d ? "default" : "outline"}
+                size="sm"
+                onClick={() => setDays(d)}
+              >
+                {d} days
+              </Button>
+            ))}
             <Button
               variant="outline"
               onClick={() => {

@@ -1,5 +1,6 @@
 // Notification system for monitoring alerts and system events
 
+import { createHmac } from "crypto"
 import { db, dbOperation } from "./db"
 
 // Type helper for notification model
@@ -63,11 +64,9 @@ export async function sendNotification(data: NotificationData): Promise<void> {
 }
 
 /**
- * Send email notification
- * In production, integrate with email service like SendGrid, Resend, or AWS SES
+ * Send email notification via Resend when RESEND_API_KEY is set; otherwise log in dev.
  */
 async function sendEmailNotification(data: NotificationData): Promise<void> {
-  // Get user email
   const user = await dbOperation(
     () =>
       db.user.findUnique({
@@ -82,24 +81,57 @@ async function sendEmailNotification(data: NotificationData): Promise<void> {
     return
   }
 
-  // In production, use an email service
-  // For now, we'll just log the email that would be sent
-  // Example with a service like Resend:
-  // await resend.emails.send({
-  //   from: 'SkipTrace <notifications@skiptrace.com>',
-  //   to: user.email,
-  //   subject: data.title,
-  //   html: generateEmailTemplate(data),
-  // })
+  const from = process.env.NOTIFICATION_EMAIL_FROM || "SkipTrace <onboarding@resend.dev>"
+  const html = generateEmailTemplate(data)
+
+  if (process.env.RESEND_API_KEY) {
+    try {
+      const { Resend } = await import("resend")
+      const resend = new Resend(process.env.RESEND_API_KEY)
+      const { error } = await resend.emails.send({
+        from,
+        to: user.email,
+        subject: data.title,
+        html,
+      })
+      if (error) {
+        console.warn("Resend email failed:", error)
+      }
+    } catch (err) {
+      console.warn("Failed to send email notification:", err)
+    }
+    return
+  }
 
   console.log(`Email notification would be sent to ${user.email}:`, {
     subject: data.title,
     message: data.message,
   })
+}
 
-  // TODO: Integrate with actual email service (SendGrid, Resend, AWS SES, etc.)
-  // Check user preferences for email notifications
-  // Format email with proper HTML template
+function generateEmailTemplate(data: NotificationData): string {
+  const escapedTitle = escapeHtml(data.title)
+  const escapedMessage = escapeHtml(data.message)
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>${escapedTitle}</title></head>
+<body style="font-family: system-ui, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <h1 style="font-size: 1.25rem;">${escapedTitle}</h1>
+  <p style="color: #374151;">${escapedMessage.replace(/\n/g, "<br>")}</p>
+  <p style="color: #9ca3af; font-size: 0.875rem; margin-top: 24px;">SkipTrace Notification</p>
+</body>
+</html>
+  `.trim()
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
 }
 
 /**
@@ -124,6 +156,17 @@ export async function sendMonitoringAlert(
       changes,
     },
   })
+  try {
+    await sendWebhookNotification(userId, "monitoring.alert", {
+      subscriptionId,
+      targetType,
+      targetValue,
+      changes,
+      timestamp: new Date().toISOString(),
+    })
+  } catch (error) {
+    console.warn("Failed to send monitoring webhook:", error)
+  }
 }
 
 /**
@@ -161,20 +204,59 @@ export async function sendBatchCompleteNotification(
 /**
  * Send webhook notification to user's configured webhooks
  */
-async function sendWebhookNotification(
-  _userId: string,
-  _event: string,
-  _data: Record<string, unknown>,
+export async function sendWebhookNotification(
+  userId: string,
+  event: string,
+  data: Record<string, unknown>,
 ): Promise<void> {
-  // In production, fetch webhook configurations from database
-  // For now, this is a placeholder
-  // Example implementation:
-  // const webhooks = await db.webhook.findMany({ where: { userId, active: true, events: { has: event } } })
-  // for (const webhook of webhooks) {
-  //   await fetch(webhook.url, {
-  //     method: "POST",
-  //     headers: { "Content-Type": "application/json", "X-Webhook-Signature": generateSignature(data, webhook.secret) },
-  //     body: JSON.stringify({ event, timestamp: new Date().toISOString(), data }),
-  //   })
-  // }
+  const webhooks = await dbOperation(
+    () =>
+      db.webhook.findMany({
+        where: {
+          userId,
+          active: true,
+          events: { has: event },
+        },
+        select: { id: true, url: true, secret: true },
+      }),
+    [],
+  )
+
+  if (!Array.isArray(webhooks) || webhooks.length === 0) return
+
+  const payload = {
+    event,
+    timestamp: new Date().toISOString(),
+    data,
+  }
+  const body = JSON.stringify(payload)
+
+  await Promise.allSettled(
+    webhooks.map(async (webhook) => {
+      const signature = webhook.secret
+        ? generateWebhookSignature(body, webhook.secret)
+        : ""
+      try {
+        const res = await fetch(webhook.url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(signature ? { "X-Webhook-Signature": signature } : {}),
+            "X-Webhook-Event": event,
+          },
+          body,
+          signal: AbortSignal.timeout(10000),
+        })
+        if (!res.ok) {
+          console.warn(`Webhook ${webhook.id} delivery failed: ${res.status} ${res.statusText}`)
+        }
+      } catch (err) {
+        console.warn(`Webhook ${webhook.id} delivery error:`, err)
+      }
+    }),
+  )
+}
+
+function generateWebhookSignature(payload: string, secret: string): string {
+  return createHmac("sha256", secret).update(payload).digest("hex")
 }

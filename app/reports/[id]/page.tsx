@@ -115,6 +115,47 @@ export default function ReportDetailPage({ params }: { params: Promise<{ id: str
     }
   }
 
+  const handleExportCSV = () => {
+    if (!report?.results) return
+    const flat: Record<string, string> = {}
+    const walk = (obj: unknown, prefix = "") => {
+      if (obj == null) return
+      if (typeof obj !== "object") {
+        flat[prefix] = String(obj)
+        return
+      }
+      for (const [k, v] of Object.entries(obj)) {
+        const key = prefix ? `${prefix}.${k}` : k
+        if (v != null && typeof v === "object" && !Array.isArray(v) && !(v instanceof Date)) {
+          walk(v, key)
+        } else {
+          flat[key] = v == null ? "" : String(v)
+        }
+      }
+    }
+    walk(report.results)
+    const header = Object.keys(flat).join(",")
+    const row = Object.values(flat).map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")
+    const blob = new Blob([header + "\n" + row], { type: "text/csv" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `${report.title || "report"}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleExportJSON = () => {
+    if (!report?.results) return
+    const blob = new Blob([JSON.stringify(report.results, null, 2)], { type: "application/json" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `${report.title || "report"}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   if (loading) {
     return (
       <main className="min-h-screen bg-background">
@@ -153,6 +194,8 @@ export default function ReportDetailPage({ params }: { params: Promise<{ id: str
   const addresses = Array.isArray(person?.addresses) ? person.addresses : []
   const jobs = Array.isArray(person?.jobs) ? person.jobs : []
   const socialPlatforms = socialMedia ? Object.entries(socialMedia).filter(([, v]) => v !== false) : []
+  const confidenceScore = typeof results.confidenceScore === "number" ? results.confidenceScore : undefined
+  const dataQuality = typeof results.dataQuality === "string" ? results.dataQuality : undefined
 
   return (
     <main className="min-h-screen bg-background">
@@ -177,18 +220,34 @@ export default function ReportDetailPage({ params }: { params: Promise<{ id: str
             )}
             <Button className="gap-2" onClick={handleExport}>
               <Download className="h-4 w-4" />
-              Export PDF
+              PDF
+            </Button>
+            <Button variant="outline" className="gap-2" onClick={handleExportCSV}>
+              CSV
+            </Button>
+            <Button variant="outline" className="gap-2" onClick={handleExportJSON}>
+              JSON
             </Button>
           </div>
         </div>
 
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2">Search Report</h1>
-          <div className="flex items-center gap-3 text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-3 text-muted-foreground">
             <Badge variant="secondary" className="capitalize">
               {report.searchType.replace("_", " ")} Search
             </Badge>
             <span>{new Date(report.createdAt).toLocaleDateString()}</span>
+            {confidenceScore != null && (
+              <Badge variant={confidenceScore >= 70 ? "default" : confidenceScore >= 40 ? "secondary" : "outline"}>
+                {confidenceScore}% confidence
+              </Badge>
+            )}
+            {dataQuality && (
+              <Badge variant={dataQuality === "high" ? "default" : dataQuality === "medium" ? "secondary" : "outline"}>
+                {dataQuality} quality
+              </Badge>
+            )}
           </div>
         </div>
 

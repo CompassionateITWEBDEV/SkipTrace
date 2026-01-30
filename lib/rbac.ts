@@ -1,17 +1,12 @@
 // Role-Based Access Control (RBAC) utilities
-// Note: User model should include a 'role' field (USER, ADMIN, etc.)
-// For now, we'll use plan-based access with admin check via email or environment variable
+// Admin is determined by the user.role field in the database (ADMIN vs USER).
 
 import { db, dbOperation } from "./db"
 
 export type UserRole = "USER" | "ADMIN" | "MODERATOR"
 
-// Admin emails (in production, store in database or environment)
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || "").split(",").filter(Boolean)
-
 /**
- * Check if user has a specific role
- * In production, this would check the user.role field from database
+ * Check if user has a specific role (from database user.role field).
  */
 export async function hasRole(userId: string, role: UserRole): Promise<boolean> {
   try {
@@ -19,19 +14,17 @@ export async function hasRole(userId: string, role: UserRole): Promise<boolean> 
       () =>
         db.user.findUnique({
           where: { id: userId },
-          select: { email: true, plan: true },
+          select: { role: true },
         }),
       null,
     )
 
     if (!user) return false
 
-    // Admin check - use email list or plan-based for now
     if (role === "ADMIN") {
-      return ADMIN_EMAILS.includes(user.email) || user.plan === "ENTERPRISE"
+      return user.role === "ADMIN"
     }
 
-    // All authenticated users have USER role
     if (role === "USER") {
       return true
     }

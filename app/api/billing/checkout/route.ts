@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/auth"
 import { db, dbOperation } from "@/lib/db"
 import { createErrorResponse, ValidationError } from "@/lib/error-handler"
 import { logAuditEvent } from "@/lib/audit-log"
+import { createCheckoutSession, stripe } from "@/lib/stripe"
 
 type Plan = "FREE" | "STARTER" | "PROFESSIONAL" | "ENTERPRISE"
 
@@ -10,8 +11,8 @@ type Plan = "FREE" | "STARTER" | "PROFESSIONAL" | "ENTERPRISE"
 export const dynamic = "force-dynamic"
 
 /**
- * Create Stripe checkout session for plan upgrade
- * In production, integrate with Stripe Checkout API
+ * Create Stripe checkout session for plan upgrade.
+ * Saves stripeCustomerId when user completes checkout (via webhook checkout.session.completed).
  */
 export async function POST(request: Request) {
   try {
@@ -23,12 +24,11 @@ export async function POST(request: Request) {
       throw new ValidationError("Valid plan is required (STARTER, PROFESSIONAL, or ENTERPRISE)")
     }
 
-    // Check if user already has this plan or higher
     const currentUserResult = await dbOperation(
       () =>
         db.user.findUnique({
           where: { id: user.id },
-          select: { plan: true },
+          select: { plan: true, email: true, stripeCustomerId: true },
         }),
       null,
     )
@@ -37,8 +37,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
 
-    // Type assertion: dbOperation + Prisma can infer 'never' after null check in some builds
-    const currentUser = currentUserResult as { plan: Plan }
+    const currentUser = currentUserResult as {
+      plan: Plan
+      email: string
+      stripeCustomerId: string | null
+    }
 
     const planHierarchy: Record<Plan, number> = {
       FREE: 0,
@@ -57,11 +60,24 @@ export async function POST(request: Request) {
       )
     }
 
-    // In production, create Stripe Checkout Session
-    // For now, return a mock checkout URL
-    const checkoutUrl = `/billing/checkout?plan=${plan}&session_id=mock_${Date.now()}`
+    let checkoutUrl: string
+    let sessionId: string
 
-    // Log audit event
+    if (stripe) {
+      const session = await createCheckoutSession(
+        user.id,
+        currentUser.email,
+        plan as "STARTER" | "PROFESSIONAL" | "ENTERPRISE",
+        currentUser.stripeCustomerId,
+      )
+      checkoutUrl = session.url
+      sessionId = session.sessionId
+    } else {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"
+      checkoutUrl = `${baseUrl}/billing?plan=${plan}&session_id=mock_${Date.now()}`
+      sessionId = `cs_mock_${Date.now()}`
+    }
+
     await logAuditEvent({
       userId: user.id,
       action: "checkout_initiated",
@@ -72,8 +88,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       checkoutUrl,
+      sessionId,
       plan,
-      message: "Checkout session created. In production, this would redirect to Stripe Checkout.",
     })
   } catch (error) {
     console.error("Checkout creation error:", error)

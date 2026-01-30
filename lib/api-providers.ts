@@ -86,57 +86,147 @@ class RapidApiProvider implements ApiProvider {
 }
 
 /**
- * Alternative provider placeholder
- * In production, implement with actual alternative API
+ * Alternative provider: uses the same skip-trace client as fallback when primary fails.
+ * When FALLBACK_API_PROVIDER is enabled, this provides a real second code path (e.g. after circuit breaker opens).
+ * Optionally set RAPIDAPI_ALT_KEY to use a different API key for the fallback.
  */
 class AlternativeProvider implements ApiProvider {
   name = "Alternative"
   priority = 2 // Fallback provider
 
-  async searchByEmail(_email: string): Promise<unknown> {
-    throw new Error("Alternative provider not yet implemented")
+  async searchByEmail(email: string): Promise<unknown> {
+    return clientSearchByEmail(email)
   }
 
-  async searchByPhone(_phone: string): Promise<unknown> {
-    throw new Error("Alternative provider not yet implemented")
+  async searchByPhone(phone: string): Promise<unknown> {
+    return clientSearchByPhone(phone)
   }
 
-  async searchByName(_firstName: string, _lastName: string, _city?: string, _state?: string): Promise<unknown> {
-    throw new Error("Alternative provider not yet implemented")
+  async searchByName(
+    firstName: string,
+    lastName: string,
+    _city?: string,
+    _state?: string,
+  ): Promise<unknown> {
+    const name = [firstName, lastName].filter(Boolean).join(" ").trim()
+    return clientSearchByName(name)
   }
 
-  async searchByAddress(_street: string, _city?: string, _state?: string, _zip?: string): Promise<unknown> {
-    throw new Error("Alternative provider not yet implemented")
+  async searchByAddress(
+    street: string,
+    city?: string,
+    state?: string,
+    zip?: string,
+  ): Promise<unknown> {
+    const citystatezip = buildCityStateZip(city, state, zip)
+    return clientSearchByAddress(street, citystatezip || "")
   }
 
-  async searchByNameAddress(_name: string, _citystatezip: string, _page?: string): Promise<unknown> {
-    throw new Error("Alternative provider not yet implemented")
+  async searchByNameAddress(
+    name: string,
+    citystatezip: string,
+    page = "1",
+  ): Promise<unknown> {
+    return clientSearchByNameAddress(name, citystatezip, page)
   }
 
-  async getPersonDetails(_peoId: string): Promise<unknown> {
-    throw new Error("Alternative provider not yet implemented")
+  async getPersonDetails(peoId: string): Promise<unknown> {
+    return clientGetPersonDetails(peoId)
   }
 
   async checkHealth(): Promise<boolean> {
-    return false // Not implemented yet
+    return clientHealthCheck()
+  }
+}
+
+/**
+ * External second provider: calls a configurable HTTP endpoint (SECONDARY_SEARCH_API_URL).
+ * Use this to integrate a different vendor or internal API. Expected request: POST with
+ * JSON body { type: "email"|"phone"|"name"|"address", ...params }. Expected response: JSON result object.
+ * Set SECONDARY_SEARCH_API_URL and optionally SECONDARY_SEARCH_API_KEY (Bearer header) to enable.
+ */
+const SECONDARY_URL = process.env.SECONDARY_SEARCH_API_URL
+const SECONDARY_KEY = process.env.SECONDARY_SEARCH_API_KEY
+
+class ExternalProvider implements ApiProvider {
+  name = "External"
+  priority = 3
+
+  private async callSecondary(type: string, params: Record<string, string>): Promise<unknown> {
+    if (!SECONDARY_URL) throw new Error("Secondary API URL not configured")
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 15000)
+    try {
+      const res = await fetch(SECONDARY_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(SECONDARY_KEY ? { Authorization: `Bearer ${SECONDARY_KEY}` } : {}),
+        },
+        body: JSON.stringify({ type, ...params }),
+        signal: controller.signal,
+      })
+      clearTimeout(timeout)
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(`Secondary API error ${res.status}: ${text.slice(0, 200)}`)
+      }
+      return res.json()
+    } catch (err) {
+      clearTimeout(timeout)
+      throw err
+    }
+  }
+
+  async searchByEmail(email: string): Promise<unknown> {
+    return this.callSecondary("email", { email })
+  }
+
+  async searchByPhone(phone: string): Promise<unknown> {
+    return this.callSecondary("phone", { phone })
+  }
+
+  async searchByName(
+    firstName: string,
+    lastName: string,
+    city?: string,
+    state?: string,
+  ): Promise<unknown> {
+    return this.callSecondary("name", {
+      firstName,
+      lastName,
+      ...(city ? { city } : {}),
+      ...(state ? { state } : {}),
+    })
+  }
+
+  async searchByAddress(
+    street: string,
+    city?: string,
+    state?: string,
+    zip?: string,
+  ): Promise<unknown> {
+    return this.callSecondary("address", {
+      street,
+      ...(city ? { city } : {}),
+      ...(state ? { state } : {}),
+      ...(zip ? { zip } : {}),
+    })
   }
 }
 
 // Provider registry - sorted by priority
 const providers: ApiProvider[] = [new RapidApiProvider()]
 
-// Add fallback provider if configured
+// Add fallback provider if configured (same API, different code path for failover)
 if (process.env.FALLBACK_API_PROVIDER === "enabled") {
   providers.push(new AlternativeProvider())
-  // Sort by priority
-  providers.sort((a, b) => a.priority - b.priority)
 }
-
-// Add fallback provider if configured
-if (process.env.FALLBACK_API_PROVIDER === "enabled") {
-  // In the future, add alternative providers here
-  // providers.push(new AlternativeProvider())
+// Add external second provider when SECONDARY_SEARCH_API_URL is set (different API/vendor)
+if (SECONDARY_URL) {
+  providers.push(new ExternalProvider())
 }
+providers.sort((a, b) => a.priority - b.priority)
 
 /**
  * Check provider health
