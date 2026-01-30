@@ -53,7 +53,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json().catch(() => ({}))
-    const { phone } = body
+    const { phone, skipCache } = body
 
     if (!phone || typeof phone !== "string" || phone.trim().length === 0) {
       throw new ValidationError("Phone number is required", "phone")
@@ -69,20 +69,22 @@ export async function POST(request: Request) {
       }
     }
 
-    // Check cache first
+    // Check cache first (skip if skipCache: true — e.g. to refresh after a previously cached empty/failed result)
     const cacheKey = cache.getPhoneKey(cleanedPhone)
-    const cachedResult = await cache.get<{
-      success: boolean
-      searchType: string
-      query: unknown
-      skipTraceData: unknown
-      virtualCheck: unknown
-      warning?: string | null
-      searchPerformed: string
-    }>(cacheKey)
+    if (!skipCache) {
+      const cachedResult = await cache.get<{
+        success: boolean
+        searchType: string
+        query: unknown
+        skipTraceData: unknown
+        virtualCheck: unknown
+        warning?: string | null
+        searchPerformed: string
+      }>(cacheKey)
 
-    if (cachedResult) {
-      return NextResponse.json(cachedResult)
+      if (cachedResult) {
+        return NextResponse.json(cachedResult)
+      }
     }
 
     const apiKey = process.env.RAPIDAPI_KEY

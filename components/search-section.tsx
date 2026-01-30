@@ -116,7 +116,7 @@ export function SearchSection() {
     }
   }
 
-  const handlePhoneSearch = async () => {
+  const handlePhoneSearch = async (skipCache = false) => {
     if (!phoneQuery) return
 
     let cleanedPhone = phoneQuery.replace(/[\s\-().]/g, "")
@@ -143,7 +143,7 @@ export function SearchSection() {
       const response = await fetch("/api/search-phone", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: cleanedPhone }),
+        body: JSON.stringify({ phone: cleanedPhone, ...(skipCache && { skipCache: true }) }),
       })
 
       if (response.ok) {
@@ -559,7 +559,7 @@ export function SearchSection() {
                       <Button
                         size="lg"
                         className="h-12 px-8"
-                        onClick={handlePhoneSearch}
+                        onClick={() => handlePhoneSearch()}
                         disabled={isSearching || !phoneQuery}
                       >
                         {isSearching ? (
@@ -574,9 +574,19 @@ export function SearchSection() {
                           </>
                         )}
                       </Button>
+                      <Button
+                        size="lg"
+                        variant="outline"
+                        className="h-12 px-6"
+                        onClick={() => handlePhoneSearch(true)}
+                        disabled={isSearching || !phoneQuery}
+                        title="Ignore cached result and fetch fresh data"
+                      >
+                        Refresh
+                      </Button>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Enter phone in international format with country code. US numbers: +1 followed by 10 digits.
+                      Enter phone in international format with country code. US numbers: +1 followed by 10 digits. Use Refresh if a number returns no data (e.g. after a cached empty result).
                     </p>
                   </div>
                   {phoneValidationResult && <PhoneValidationResult data={phoneValidationResult} />}
